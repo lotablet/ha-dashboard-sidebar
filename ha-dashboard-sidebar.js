@@ -121,22 +121,25 @@ class HaDashboardSidebar extends LitElement {
   static async getStubConfig(hass) {
     return {
       type: 'custom:ha-dashboard-sidebar',
-      title: 'Sidebar',
+      title: 'Welcome, {{ user }}',
+      mode: 'vertical',
+      align: 'left',
       entities: [
         {
+          type: 'weather',
+          entity: 'weather.home',
+        },
+        {
           type: 'sensor',
-          entity: 'sensor.casa_channel_1_power',
-          name: 'Consumo Casa',
+          entity: 'sensor.mypowersensor',
+          collapsed: 'true',
+          name: 'Home Power',
           icon: 'mdi:flash',
         },
         {
           type: 'person',
           entity: 'person.lorenzo',
-          tracker_entity: 'device_tracker.life360_lorenzo'
-        },
-        {
-          type: 'weather',
-          entity: 'weather.home',
+          tracker_entity: 'device_tracker.lorenzo',
         }
       ]
     };
