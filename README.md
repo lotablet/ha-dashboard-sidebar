@@ -62,10 +62,10 @@ Example:
 - type: sensor
   entity: sensor.open_shutters
   name: Shutters
-  icon: phu:top-window-open
+  icon: phu:top-window-open        # customize icon
   tap_action:
     action: more-info
-    entity: cover.all_shutters
+    entity: cover.all_shutters     # 🔥🔥🔥 you can specify another entity to see more-info
 ```
 
 ## 👉🏻 Custom Cards
