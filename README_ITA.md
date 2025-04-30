@@ -9,7 +9,7 @@ Questa guida descrive **tutte le funzionalità disponibili** per la custom card 
 type: custom:ha-dashboard-sidebar
 title: Benvenuto, {{ user }}
 mode: horizontal       # Default "vertical"
-align: center          # oppure "right" o left se vogliamo l`orientamento a destra o a sinistra
+align: center          # Default "left", scegli "right" o "left" se vuoi l`orientamento a destra o a sinistra
 collapsed: true        # mostrare o non mostrare in sidebar espansa o collassata
 width: 80vw            # Controllo Larghezza
 height: 10vh           # Controllo Altezza
