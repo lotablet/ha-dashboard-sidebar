@@ -1,0 +1,7 @@
+{
+  "name": "Ha Dashboard Sidebar",
+  "content_in_root": false,
+  "render_readme": true,
+  "filename": "ha-dashboard-sidebar.js",
+  "homeassistant": "2024.3.0"
+}
