@@ -3,6 +3,10 @@
 
 This guide describes **all available features** for the `ha-dashboard-sidebar` custom card, compatible with Lovelace in Home Assistant.
 
+
+🇮🇹 [GUIDA IN ITALIANO] (https://github.com/lotablet/ha-dashboard-sidebar/blob/main/README_ITA.md)
+
+
 ## 🔧 Basic configuration
 
 ```yaml
