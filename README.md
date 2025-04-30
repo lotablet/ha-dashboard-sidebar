@@ -13,7 +13,7 @@ This guide describes **all available features** for the `ha-dashboard-sidebar` c
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
 mode: horizontal       # Default "vertical"
-align: center          # Defaulult left, choose "right" or "left" if you want to align on the left or right side
+align: center          # Default left, choose "right" or "left" if you want to align on the left or right side
 width: 80vw            # control width
 height: 10vh           # control height
 collapsed: true        # whether the sidebar starts collapsed
