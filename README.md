@@ -24,8 +24,7 @@ entities:
 | `title`       | string    | Titolo mostrato in alto (può includere `{{ user }}`)                        |
 | `mode`        | string    | `vertical` o `horizontal`                                                   |
 | `align`       | string    | `right` o `left`                                                            |
-| `collapsed`   | boolean   | Se `true`, mostra solo in expanded, se `false` mostra solo in collassata    |
-| `style`       | string    | (opzionale) Stile CSS per `card-mod` su tutta la card                       |
+| `collapsed`   | boolean   | Se `true`, mostra una card solo in espansa, se `false` mostra solo in collassata, se non specificato, entrambe   |
 | `entities`    | list      | Lista di entità (vedi tabella tipi supportati sotto)                        |
 
 ## 🧩 Tipi di entità supportati
@@ -88,12 +87,9 @@ entities:
           layout: vertical
           name: AC Sala
           type: custom:mushroom-entity-card
-        - entity: climate.aria_condizionata_camere
-          fill_container: true
-          icon: mdi:air-conditioner
-          layout: vertical
-          name: AC Camere
-          type: custom:mushroom-entity-card
+        - entity: light.acquario
+          name: Acquario
+          type: custom:button-card
         - entity: sensor.frigo_power
           fill_container: true
           icon: mdi:fridge
@@ -116,12 +112,34 @@ entities:
 | `style:`                 | Compatibile con `card-mod` a livello di card principale                     |
 | `title` dinamico         | Può includere `{{ user }}` per mostrare nome utente loggato                 |
 
+
+# 🔢 Better with Card Mod! Ecco le variabili di Card Mod
+
+| Variabile                             | Descrizione                                              | Default (fallback)                  |
+|---------------------------------------|----------------------------------------------------------|-------------------------------------|
+| `--card-background-color`            | Sfondo della sidebar e delle card                        | `#1a1b1e`                           |
+| `--primary-text-color`               | Colore del testo principale                              | `#ffffff`                           |
+| `--primary-color`                    | Colore primario (icone attive, slider, bottoni, etc.)    | `#7289da`                           |
+| `--text-primary-color`               | Colore del testo sopra bottoni o slider colorati         | `#ffffff`                           |
+| `--secondary-background-color`       | Sfondo degli slider, toggle e input                      | `#333` (tema dipendente)            |
+| `--divider-color`                    | Colore dei bordi delle card e sezioni                    | `rgba(255,255,255,0.1)`             |
+| `--state-icon-active-color`          | Colore per le icone attive (`ha-icon.on`)                | `var(--primary-color)`              |
+| `--ha-card-border-radius`            | Border radius per tutte le card e popup                  | `24px`                              |
+| `--ha-card-box-shadow`               | Ombra delle card (effetto fluttuante)                    | `0 8px 32px rgba(0,0,0,0.25)`       |
+| `--dashboard-width`                  | Larghezza della sidebar quando espansa                   | `300px` (o da config)               |
+| `--dashboard-collapsed-width`        | Larghezza della sidebar quando collassata (verticale)    | `90px`                              |
+| `--rgb-primary-color`                | Usato per generare ombre dinamiche (tipo glow)           | `114, 137, 218`                     |
+
 ## 🖌️ Esempio con stile `card-mod`
 
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Benvenuto, {{ user }}
 collapsed: true
+entities:
+  - type: switch
+    entity: switch.luce_studio
+    name: Studio
 style: |
   ha-card {
     border-radius: 16px;
@@ -138,28 +156,7 @@ style: |
     --ha-card-border-radius: 20px;
     --ha-card-box-shadow: none;
   }
-entities:
-  - type: switch
-    entity: switch.luce_studio
-    name: Studio
 ```
-# 🔢 Variabili Card Mod
-| Variabile                             | Descrizione                                              | Default (fallback)                  |
-|---------------------------------------|----------------------------------------------------------|-------------------------------------|
-| `--card-background-color`            | Sfondo della sidebar e delle card                        | `#1a1b1e`                           |
-| `--primary-text-color`               | Colore del testo principale                              | `#ffffff`                           |
-| `--primary-color`                    | Colore primario (icone attive, slider, bottoni, etc.)    | `#7289da`                           |
-| `--text-primary-color`               | Colore del testo sopra bottoni o slider colorati         | `#ffffff`                           |
-| `--secondary-background-color`       | Sfondo degli slider, toggle e input                      | `#333` (tema dipendente)            |
-| `--divider-color`                    | Colore dei bordi delle card e sezioni                    | `rgba(255,255,255,0.1)`             |
-| `--state-icon-active-color`          | Colore per le icone attive (`ha-icon.on`)                | `var(--primary-color)`              |
-| `--ha-card-border-radius`            | Border radius per tutte le card e popup                  | `24px`                              |
-| `--ha-card-box-shadow`               | Ombra delle card (effetto fluttuante)                    | `0 8px 32px rgba(0,0,0,0.25)`       |
-| `--dashboard-width`                  | Larghezza della sidebar quando espansa                   | `300px` (o da config)               |
-| `--dashboard-collapsed-width`        | Larghezza della sidebar quando collassata (verticale)    | `90px`                              |
-| `--rgb-primary-color`                | Usato per generare ombre dinamiche (tipo glow)           | `114, 137, 218`                     |
-
-
 ## ➡️ Esempio completo
 ```yaml
 type: custom:ha-dashboard-sidebar
@@ -200,12 +197,12 @@ entities:
   - type: custom_card
     collapsed: false
     card:
-      - entity: switch.luce_studio
+      - type: custom:mushroom-entity-card
+        entity: switch.luce_studio
         fill_container: true
         icon: mdi:air-conditioner
         layout: vertical
         name: Luce Studio
-        type: custom:mushroom-entity-card
 card_mod:
   style: |
     ha-card {
@@ -225,13 +222,15 @@ card_mod:
     }
 
 ```
+
+
 ## 📌 Note finali
 
 - La card è **responsive** e si adatta al layout `vertical` o `horizontal`
 - Gli stili e il comportamento sono ottimizzati per tablet o pannelli touch
 - Può essere espansa/collassata dinamicamente
-- Si possono includere tutte le card si home assistant all'interno della barra espansa
+- Si possono includere tutte le card di home assistant all'interno della barra espansa
 
 ---
 
-Made with ❤️ by [LoTableT](https://github.com/LoTableT)
+Made with ❤️ by [LoTableT](https://tiktok.com/@lotablet)
