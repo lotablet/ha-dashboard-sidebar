@@ -8,9 +8,11 @@ Questa guida descrive **tutte le funzionalità disponibili** per la custom card 
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Benvenuto, {{ user }}
-mode: vertical       # oppure "horizontal"
-align: left          # oppure "right" se vogliamo l`orientamento a destra
-collapsed: true      # mostrare o non mostrare in sidebar espansa o collassata
+mode: horizontal       # oppure "vertical"
+align: center          # oppure "right" o left se vogliamo l`orientamento a destra o a sinistra
+collapsed: true        # mostrare o non mostrare in sidebar espansa o collassata
+width: 80vw            # Controllo Larghezza
+height: 10vh           # Controllo Altezza
 entities:
   - type: sensor
     entity: sensor.example
@@ -26,7 +28,8 @@ entities:
 | `align`       | string    | `right` o `left`                                                            |
 | `collapsed`   | boolean   | Se `true`, mostra una card solo in espansa, se `false` mostra solo in collassata, se non specificato, entrambe   |
 | `entities`    | list      | Lista di entità (vedi tabella tipi supportati sotto)                        |
-
+| `width`    | string      | Controllo larghezza                       |
+| `height`    | string      | Controllo altezza
 ## 🧩 Tipi di entità supportati
 
 | Tipo          | Comportamento                                               | Esempio `entity:`                             |
