@@ -7,7 +7,7 @@ Questa guida descrive **tutte le funzionalità disponibili** per la custom card 
 
 ```yaml
 type: custom:ha-dashboard-sidebar
-title: Sidebar
+title: Benvenuto, {{ user }}
 mode: vertical       # oppure "horizontal"
 align: left          # oppure "right" se vogliamo l`orientamento a destra
 collapsed: true      # mostrare o non mostrare in sidebar espansa o collassata
@@ -164,19 +164,13 @@ title: Benvenuto, {{ user }}
 collapsed: true
 entities:
   - type: weather
-    entity: weather.meteoradar_weather
+    entity: weather.weather
   - type: person
-    entity: person.lorenzo_tavola
-    tracker_entity: device_tracker.life360_lorenzo_tavola
-  - type: person
-    entity: person.beatrice
-    tracker_entity: device_tracker.life360_beatrice_bianchetti
-  - type: person
-    entity: person.mattia
-    tracker_entity: device_tracker.life360_mattia_tavola
+    entity: person.lorenzo
+    tracker_entity: device_tracker.lorenzo_telefono
   - type: power
     name: Consumo
-    entity: sensor.casa_channel_1_power
+    entity: sensor.casa_power
   - type: sensor
     name: Luci
     entity: sensor.counter_luci_accese
