@@ -12,9 +12,11 @@ This guide describes **all available features** for the `ha-dashboard-sidebar` c
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
-mode: vertical       # or "horizontal"
-align: left          # or "right" to align on the right side
-collapsed: true      # whether the sidebar starts collapsed
+mode: horizontal       # or "vertical"
+align: left            # or "right" to align on the right side
+width: 80vw            # control width
+height: 10vh           # control height
+collapsed: true        # whether the sidebar starts collapsed
 entities:
   - type: sensor
     entity: sensor.example
@@ -30,7 +32,8 @@ entities:
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
 | `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
-
+| `width`    | list      | fixed width                       |
+| `height`    | list      | fixed height                            |
 ## 🧩 Supported entity types
 
 | Type           | Behavior                                                        | Example `entity:`                             |
