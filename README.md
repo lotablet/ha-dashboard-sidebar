@@ -24,7 +24,7 @@ entities:
 | `title`       | string    | Header title (can include `{{ user }}`)                                   |
 | `mode`        | string    | `vertical` or `horizontal`                                                |
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
-| `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded   |
+| `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
 
 ## 🧩 Supported entity types
@@ -106,7 +106,7 @@ entities:
 
 | Feature                 | Description                                                              |
 |-------------------------|--------------------------------------------------------------------------|
-| `collapsed` per entity  | Each entity can be shown only when the sidebar is collapsed or expanded |
+| `collapsed` per entity  | Each entity can be shown only when the sidebar is collapsed or expanded, If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both  |
 | `tracker_entity`        | Used with `person` to display live location on map                      |
 | `custom_card.card`      | Can contain any nested Lovelace card                                    |
 | `style:`                | Fully compatible with `card-mod` styles                                |
