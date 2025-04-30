@@ -32,8 +32,8 @@ entities:
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
 | `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
-| `width`    | list      | fixed width                       |
-| `height`    | list      | fixed height                            |
+| `width`    | string      | Control width                       |
+| `height`    | string      | Control height                            |
 ## 🧩 Supported entity types
 
 | Type           | Behavior                                                        | Example `entity:`                             |
