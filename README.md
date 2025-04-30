@@ -51,7 +51,7 @@ Each entity can include:
 ```yaml
 tap_action:
   action: toggle | more-info | call-service | navigate
-  entity: another_optional_entity
+  entity: another_optional_entity_to_see_more_info
   service: optional_service
   navigation_path: /dashboard/xyz
 ```
