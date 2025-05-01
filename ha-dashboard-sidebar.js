@@ -2289,8 +2289,8 @@ render() {
     this._expandContent ? "expanded-content" : ""
   ].join(" ");
 
-  const width = this.config.width || (isHorizontal ? '80vw' : 'auto');
-  const height = this.config.height || (this._collapsed ? 'auto' : '25vh');
+  const width = this.config.width || (isHorizontal ? 'auto' : 'auto');
+  const height = this.config.height || (this._collapsed ? 'auto' : 'auto');
 
   const dashboardStyle = `
     width: 100%;
