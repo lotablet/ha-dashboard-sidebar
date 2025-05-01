@@ -14,8 +14,8 @@ type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
 mode: horizontal       # Default "vertical"
 align: center          # Default left, choose "right" or "left" if you want to align on the left or right side
-width: 80vw            # control width
-height: 10vh           # control height
+width: 90vw            # control width 👉🏻 REQUIRED IN HORIZONTAL MODE "90vw" 👈🏻
+height: 500px          # control height
 collapsed: true        # whether the sidebar starts collapsed
 entities:
   - type: sensor
@@ -32,7 +32,7 @@ entities:
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
 | `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
-| `width`    | string      | Control width                       |
+| `width`    | string      | Control width 👉🏻 REQUIRED IN HORIZONTAL MODE "90vw" 👈🏻                       |
 | `height`    | string      | Control height                            |
 ## 🧩 Supported entity types
 
@@ -82,6 +82,7 @@ You can embed any Lovelace card like this:
 ```yaml
 type: custom:ha-dashboard-sidebar
 mode: horizontal
+width: 90vw   # 👉🏻 REQUIRED IN HORIZONTAL MODE "90vw" 👈🏻
 entities: 
   - type: custom_card
     collapsed: false
@@ -141,6 +142,8 @@ entities:
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
+mode: vertical
+align: left
 collapsed: true
 entities:
   - type: switch
