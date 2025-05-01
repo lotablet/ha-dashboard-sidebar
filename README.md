@@ -12,7 +12,7 @@ This guide describes **all available features** for the `ha-dashboard-sidebar` c
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
-mode: horizontal       # Default "vertical"
+mode: horizontal       # Default "vertical" NOTE: HORIZONTAL TO BE FIXED   
 align: center          # Default left, choose "right" or "left" if you want to align on the left or right side
 width: 90vw            # control width 👉🏻 REQUIRED IN HORIZONTAL MODE "90vw" 👈🏻
 height: 500px          # control height
@@ -28,7 +28,7 @@ entities:
 |---------------|-----------|---------------------------------------------------------------------------|
 | `type`        | string    | Always `custom:ha-dashboard-sidebar`                                      |
 | `title`       | string    | Header title (can include `{{ user }}`)                                   |
-| `mode`        | string    | `vertical` or `horizontal`                                                |
+| `mode`        | string    | `vertical` or `horizontal` **HORIZONTAL TO BE FIXED                                               |
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
 | `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
