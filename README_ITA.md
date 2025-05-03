@@ -12,14 +12,15 @@ Basta premere il pulsante qui sotto:
 ## Installazione manuale
 Per installare manualmente questa card, segui questi passaggi:
 
-1. Vai nella cartella `www` nella directory di configurazione di Home Assistant. Se non esiste, creala.
-2. Crea una sottocartella chiamata `custom_cards` (puoi scegliere un nome diverso, ma assicurati di usarlo in seguito nel codice).
+1. Vai nella cartella `www` nella directory di configurazione di Home Assistant.
+2. Apri community e crea la cartella `ha-dashboard-sidebar`
 3. Scarica il file della card dal repository GitHub e copialo nella cartella `custom_cards`.
 4. In Home Assistant, vai su **Configurazione > Lovelace Dashboards** e aggiungi una nuova risorsa con il seguente URL:
    ```
    /local/custom_cards/ha-dashboard-sidebar.js
+   type: module javscript
    ```
-5. Una volta aggiunta la risorsa, riavvia Home Assistant per caricare la card.
+6. Una volta aggiunta la risorsa, riavvia Home Assistant per caricare la card.
 
 A questo punto, la card sarà  disponibile per l'uso nel tuo dashboard.
 
