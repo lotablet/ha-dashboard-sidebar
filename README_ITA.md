@@ -3,6 +3,26 @@
 
 Questa guida descrive **tutte le funzionalità disponibili** per la custom card `ha-dashboard-sidebar`, compatibile con Lovelace in Home Assistant.
 
+
+## Installazione automatica
+Basta premere il pulsante qui sotto:
+
+[![Apri la tua istanza di Home Assistant e apri un repository all'interno del Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=LoTableT&repository=https%3A%2F%2Fgithub.com%2Flotablet%2Fha-dashboard-sidebar&category=Dashboard)
+
+## Installazione manuale
+Per installare manualmente questa card, segui questi passaggi:
+
+1. Vai nella cartella `www` nella directory di configurazione di Home Assistant. Se non esiste, creala.
+2. Crea una sottocartella chiamata `custom_cards` (puoi scegliere un nome diverso, ma assicurati di usarlo in seguito nel codice).
+3. Scarica il file della card dal repository GitHub e copialo nella cartella `custom_cards`.
+4. In Home Assistant, vai su **Configurazione > Lovelace Dashboards** e aggiungi una nuova risorsa con il seguente URL:
+   ```
+   /local/custom_cards/ha-dashboard-sidebar.js
+   ```
+5. Una volta aggiunta la risorsa, riavvia Home Assistant per caricare la card.
+
+A questo punto, la card sarà  disponibile per l'uso nel tuo dashboard.
+
 ## 🔧 Configurazione base
 
 ```yaml
