@@ -429,28 +429,52 @@ class HaDashboardSidebar extends LitElement {
     	/* Mini-popup: dimensioni “auto-adattive” al contenuto */
       .mini-popup {
         position: absolute;
-        background: transparent;
-        border: none;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -90%) !important;
+        background: var(--card-background-color);
+        border-radius: 16px;
         box-shadow: none;
         z-index: 9999;
-        max-width: 90vw;
         padding: 0;
         overflow: visible !important;
         display: flex;
         justify-content: center;
         align-items: center;
-        animation: popup-appear 0.3s ease-out forwards;
+        animation: popup-appear 0.3s ease forwards;
+        min-width: 100px;  /* Imposta una larghezza minima per evitare che diventi troppo piccolo */
+        max-width: 90vw;   /* Limita la larghezza massima al 90% della finestra */
+        max-height: 80vh;  /* Limita l'altezza massima al 80% della finestra */
+        width: auto;  /* Permette la larghezza dinamica in base al contenuto */
+        height: auto; /* Permette l'altezza dinamica in base al contenuto */
       }
+
       @keyframes popup-appear {
-        from {
+        0% {
           opacity: 0;
-          transform: translateY(-10px) scale(0.95);
+          transform: scale(0.8, 0.4) translateY(-50px);
         }
-        to {
-          opacity: 1;
-          transform: translateY(0) scale(1);
+
+        100% {
+          transform: scale(1)  translateY(0);
         }
       }
+      .mini-popup.closing {
+        animation: dock-minimize 200ms ease forwards;
+        pointer-events: none;
+        transform-origin: left center;
+        }
+        @keyframes dock-minimize {
+          0% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+
+          100% {
+            opacity: 0;
+            transform: scale(0.8, 0.4) translateY(-50px);
+          }
+        }
       .mini-overlay {
         position: fixed;
         top: 0;
@@ -463,14 +487,9 @@ class HaDashboardSidebar extends LitElement {
       }
       .mini-popup .card.custom-card,
       .mini-popup .custom-card-wrapper {
-        width: auto;
-        max-width: 90vw;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        max-width: 100%;  /* Assicura che la card non ecceda la larghezza del popup */
+        height: auto;     /* La card si adatta automaticamente alla sua altezza */
       }
-    	/* Assicura che slider e pulsanti non escano dal popup */
     	.mini-popup .slider-container,
     	.mini-popup .button-row,
     	.mini-popup .media-controls,
@@ -687,13 +706,32 @@ class HaDashboardSidebar extends LitElement {
         border-radius: var(--ha-card-border-radius, 16px);
         padding: 24px;
         width: 100%;
-        max-width: 300px;
-        max-height: 90vh;
+        max-width: 50vw;
+        max-height: 80vh;
         object-fit: cover;
         overflow-y: auto;
         position: relative;
       }
 
+      @media (max-width: 640px) {
+        .modal-content {
+          max-width: 90vw !important;
+        }
+      }
+
+      /* Tablet / smartphone grandi */
+      @media (max-width: 720px) {
+        .modal-content {
+          max-width: 50vw;
+        }
+      }
+
+      /* Desktop larghi */
+      @media (min-width: 1280px) {
+        .modal-content {
+          max-width: 30vw !important;
+        }
+      }
       .modal-header {
         display: flex;
         align-items: center;
@@ -741,11 +779,15 @@ class HaDashboardSidebar extends LitElement {
         border-radius: 8px;
         overflow: hidden;
         margin-top: 16px;
+        display: flex;
         justify-content: center;
         align-items: center;
       }
-
-      /* New styles for additional entity types */
+      .map-container ha-map {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+      }
       .button-row {
         display: flex;
         gap: 8px;
@@ -777,6 +819,7 @@ class HaDashboardSidebar extends LitElement {
         width: 100%;
         margin: 6px auto 8px;
         overflow: hidden;
+        padding-inline: 8px;
       }
 
       .slider::-webkit-slider-thumb {
@@ -1060,7 +1103,6 @@ class HaDashboardSidebar extends LitElement {
       }
 
       /* Padding interno proporzionale alla larghezza card */
-      .dashboard.vertical:not(.collapsed) .card.fan,
       .dashboard.vertical:not(.collapsed) .card.cover,
       .dashboard.vertical:not(.collapsed) .card.climate,
       .dashboard.vertical:not(.collapsed) .card.media-player {
@@ -1069,13 +1111,15 @@ class HaDashboardSidebar extends LitElement {
         display: flex;
         flex-direction: column;
         align-items: center;
+        gap: 16px;
       }
       .dashboard.vertical:not(.collapsed) .card.cover .cover-actions {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: 20px;
+        width: 100% !important;
       }
       .dashboard.vertical:not(.collapsed) .card.cover .button-row {
         display: flex;
@@ -1089,6 +1133,8 @@ class HaDashboardSidebar extends LitElement {
         display: flex;
         flex-direction: column;
         align-items: center;
+        height: 220px !important;
+        gap: 20px;
       }
       .dashboard {
         background: var(--card-background-color, #1a1b1e);
@@ -1115,8 +1161,8 @@ class HaDashboardSidebar extends LitElement {
         height: auto;
       }
       .dashboard .content {
-        overflow-y: auto !important;
-        max-height: 100vh !important;
+        overflow-y: auto;
+        max-height: 100vh;
         flex: 1 1 auto;
       }
       .dashboard.expanded-content.horizontal {
@@ -1148,9 +1194,9 @@ class HaDashboardSidebar extends LitElement {
         justify-content: center !important;
         align-items: center !important;
         width: auto !important;
-        max-width: calc(90vw - 100px) !important; /* lascia 16px di margine a dx/sx */
+        max-width: calc(90vw - 16px) !important;
         margin: 0 auto !important;
-        padding: 0 16px; /* spazio interno */
+        padding: 0 16px;
         box-sizing: border-box;
         position: relative !important;
       }
@@ -1166,15 +1212,36 @@ class HaDashboardSidebar extends LitElement {
         display: flex !important;
         flex-direction: row;
         flex-wrap: nowrap;
-        white-space: nowrap;
         overflow-x: auto;
         overflow-y: hidden;
+        white-space: nowrap;
         scroll-snap-type: x mandatory;
-        gap: 12px;
+        scroll-padding-inline: 16px; /* spazio all’inizio/fine per snap */
         scrollbar-width: thin;
         scrollbar-color: var(--primary-color) transparent;
+        gap: 12px;
+        padding: 12px 8px 16px 8px;
+        box-sizing: border-box;
       }
 
+      .dashboard.horizontal .content > * {
+        scroll-snap-align: start;
+        flex-shrink: 0;
+      }
+
+      .dashboard.horizontal .content::after {
+        content: '';
+        flex: 0 0 16px; /* spazio finale per scroll completo */
+      }
+
+      .dashboard.horizontal:not(.collapsed) .custom-card-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        overflow: visible !important;
+        max-width: unset !important;
+        width: auto !important;
+        flex-shrink: 0 !important;
+      }
       .dashboard.horizontal .clock {
       	font-size: 2rem;
       	font-weight: 700;
@@ -1351,8 +1418,8 @@ class HaDashboardSidebar extends LitElement {
       .dashboard.collapsed .cover,
       .dashboard.collapsed .climate,
       .dashboard.collapsed .button,
+      .dashboard.collapsed .custom-card,
       .dashboard.collapsed .light,
-      .dashboard.collapsed .input-text,
       .dashboard.collapsed .switch {
         width: 56px;
         height: 56px;
@@ -1382,11 +1449,6 @@ class HaDashboardSidebar extends LitElement {
         display: flex;
         align-items: center;
         justify-content: center;
-      }
-      /* 3) CUSTOM-CARD in mini-popup = auto-width + max 90vw */
-      .mini-popup .card.custom-card {
-        width: auto;
-        max-width: 90vw;
       }
       .mini-popup .fan {
         width: 200px !important;
@@ -1493,7 +1555,6 @@ class HaDashboardSidebar extends LitElement {
         box-shadow: var(--ha-card-box-shadow);
         border-radius: var(--ha-card-border-radius);
         padding: 12px;
-        animation: popup-appear 0.3s ease-out forwards;
         overflow: visible !important;
       }
       /* ───────────────────────────────
@@ -1633,17 +1694,36 @@ class HaDashboardSidebar extends LitElement {
       hour12: false
     });
   }
-  _openMiniPopup(entity, clientX, clientY) {
-    this._miniEntity = entity;
-    this._miniPos    = { x: clientX + 12, y: clientY - 40 }; // leggero offset
-    // chiudi on click fuori
-    const onClickAway = (ev) => {
-      if (!this.shadowRoot.querySelector('.mini-popup')?.contains(ev.target)) {
-        this._closeMiniPopup();
-      }
-    };
-    window.addEventListener('click', onClickAway, { once: true });
+  _openMiniPopup(entity) {
+      this._miniEntity = entity;
+
+      // Calcolare la posizione centrata
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      // Calcolare la larghezza e altezza del popup
+      const popup = this.shadowRoot.querySelector('.mini-popup');
+      if (!popup) return;
+
+      const rect = popup.getBoundingClientRect();
+
+      // Posizioniamo il popup al centro della finestra
+      const x = (screenW - rect.width) / 2;
+      const y = (screenH - rect.height) / 2;
+
+      this._miniPos = { x, y };
+      this.requestUpdate();
+
+      // Chiudi il popup se clicchi fuori
+      const onClickAway = (ev) => {
+        if (!this.shadowRoot.querySelector('.mini-popup')?.contains(ev.target)) {
+          this._closeMiniPopup();
+        }
+      };
+      window.addEventListener('click', onClickAway, { once: true });
   }
+
+
   _renderEntityExpanded(entity) {
     const prev = this._collapsed;
     this._collapsed = false;                // forza expanded
@@ -1652,8 +1732,18 @@ class HaDashboardSidebar extends LitElement {
     return tpl;
   }
   _closeMiniPopup() {
-    this._miniEntity = null;
-    this._miniPos    = null;
+    const popup = this.shadowRoot.querySelector('.mini-popup');
+    if (popup) {
+      popup.classList.add('closing');
+      setTimeout(() => {
+        this._miniEntity = null;
+        this._miniPos = null;
+        this.requestUpdate();
+      }, 200); // deve combaciare con i 200ms della animazione
+    } else {
+      this._miniEntity = null;
+      this._miniPos = null;
+    }
   }
 
   _capitalize(str) {
@@ -1946,12 +2036,11 @@ class HaDashboardSidebar extends LitElement {
       return html`
         <div class="card cover">
           <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
                @click=${(e) => this._handleTapAction(e, config)}
                @contextmenu=${(e) => this._handleHoldAction(e, config)}>
-            <div class="icon">
-              ${this._renderIcon(config, 'cover')}
-            </div>
+            ${this._renderIcon(config, 'cover')}
           </div>
         </div>
       `;
@@ -2007,6 +2096,7 @@ class HaDashboardSidebar extends LitElement {
               <div class="label" style="text-align:center; margin-top: 4px;">
                 ${this._localPosition}%
               </div>
+            </div>
           ` : ''}
         </div>
       </div>
@@ -2014,115 +2104,112 @@ class HaDashboardSidebar extends LitElement {
   }
 
   _renderClimate(config) {
-      const state = this.hass.states[config.entity];
-      if (!state) return html``;
+    const state = this.hass.states[config.entity];
+    if (!state) return html``;
 
-      const {
-          temperature,
-          current_temperature,
-          hvac_modes,
-          min_temp,
-          max_temp
-      } = state.attributes;
+    const {
+      temperature,
+      current_temperature,
+      hvac_modes,
+      min_temp,
+      max_temp,
+      temperature_unit
+    } = state.attributes;
 
-      const modeIcons = {
-          'off':      'mdi:power',
-          'heat':     'mdi:fire',
-          'cool':     'mdi:snowflake',
-          'auto':     'mdi:autorenew',
-          'dry':      'mdi:water-off',
-          'fan_only': 'mdi:fan'
-      };
+    const modeIcons = {
+      'off':      'mdi:power',
+      'heat':     'mdi:fire',
+      'cool':     'mdi:snowflake',
+      'auto':     'mdi:autorenew',
+      'dry':      'mdi:water-off',
+      'fan_only': 'mdi:fan'
+    };
 
+    if (this._collapsed) {
       return html`
-          <div class="card climate">
-              ${this._collapsed ? html`
-                  <!-- COLLAPSED: icona-bottone che apre mini-popup -->
-                  <div class="collapsed-clickable-box"
-                       tabindex="0"
-                       @click=${e => this._handleTapAction(e, config)}
-                       @contextmenu=${e => this._handleHoldAction(e, config)}>
-                      <div class="icon">${this._renderIcon(config, 'climate')}</div>
-                  </div>
-              ` : html`
-                  <!-- ESPANSA -->
-                  <div class="value"
-                       @click=${e => { e.stopPropagation(); this._handleTapAction(e, config); }}>
-                      ${current_temperature}°${state.attributes.temperature_unit}
-                  </div>
-
-                  <!-- Titolo statico, senza more-info -->
-                  <div class="label">
-                      ${config.name || state.attributes.friendly_name}
-                  </div>
-
-                  <div class="climate-controls" style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
-                      <div class="button-row" style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;">
-                          ${hvac_modes?.map(mode => html`
-                              <button
-                                  class="dash-button ${state.state === mode ? 'active' : ''}"
-                                  style="
-                                      background:${state.state === mode
-                                          ? 'var(--primary-color)'
-                                          : '#727272'};
-                                      color:var(--text-primary-color,#ffffff);
-                                      border:none;border-radius:10px;padding:6px;
-                                      width:36px;height:36px;display:inline-flex;
-                                      align-items:center;justify-content:center;
-                                      cursor:pointer;transition:all .3s ease;"
-                                  @click=${e => {
-                                      e.stopPropagation();
-                                      if (mode === 'off') {
-                                          this._callService('climate', 'turn_off', config.entity);
-                                      } else {
-                                          this._callService(
-                                              'climate',
-                                              'set_hvac_mode',
-                                              config.entity,
-                                              { hvac_mode: mode }
-                                          );
-                                      }
-                                  }}
-                                  title=${mode === 'off' ? 'Spegni' : this._capitalize(mode)}>
-                                  <ha-icon icon="${modeIcons[mode] || 'mdi:help-circle'}"></ha-icon>
-                              </button>
-                          `)}
-                      </div>
-
-                      <div class="slider-container" style="margin-top:10px;width:100%;">
-                          <input
-                              type="range"
-                              class="slider"
-                              @click=${e => e.stopPropagation()}
-                              .value=${temperature}
-                              @change=${e => this._callService(
-                                  'climate',
-                                  'set_temperature',
-                                  config.entity,
-                                  { temperature: Number(e.target.value) }
-                              )}
-                              min=${min_temp}
-                              max=${max_temp}
-                              step="0.5"
-                              style="
-                                  -webkit-appearance:none;
-                                  appearance:none;
-                                  width:100%;
-                                  height:6px;
-                                  border-radius:4px;
-                                  background:var(--secondary-background-color);
-                                  outline:none;
-                                  cursor:pointer;">
-                      </div>
-
-                      <div class="label" style="text-align:center;margin-top:4px;">
-                          Target: ${temperature}°${state.attributes.temperature_unit}
-                      </div>
-                  </div>
-              `}
+        <div class="card climate">
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, "climate")}
           </div>
+        </div>
       `;
+    }
+
+    return html`
+      <div class="card climate">
+        <div class="value" @click=${e => e.stopPropagation()}>
+          ${current_temperature}°${temperature_unit}
+        </div>
+
+        <div class="label">
+          ${config.name || state.attributes.friendly_name}
+        </div>
+
+        <div class="climate-controls"
+             style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+          <div class="button-row"
+               style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;">
+            ${hvac_modes?.map(mode => html`
+              <button
+                class="dash-button ${state.state === mode ? 'active' : ''}"
+                style="
+                  background:${state.state === mode ? 'var(--primary-color)' : '#727272'};
+                  color:var(--text-primary-color,#ffffff);
+                  border:none;border-radius:10px;padding:6px;
+                  width:36px;height:36px;display:inline-flex;
+                  align-items:center;justify-content:center;
+                  cursor:pointer;transition:all .3s ease;"
+                @click=${e => {
+                  e.stopPropagation();
+                  if (mode === 'off') {
+                    this._callService('climate', 'turn_off', config.entity);
+                  } else {
+                    this._callService('climate', 'set_hvac_mode', config.entity, {
+                      hvac_mode: mode
+                    });
+                  }
+                }}
+                title=${mode === 'off' ? 'Spegni' : this._capitalize(mode)}>
+                <ha-icon icon="${modeIcons[mode] || 'mdi:help-circle'}"></ha-icon>
+              </button>
+            `)}
+          </div>
+
+          <div class="slider-container" style="margin-top:10px;width:100%;">
+            <input
+              type="range"
+              class="slider"
+              .value=${temperature}
+              min=${min_temp}
+              max=${max_temp}
+              step="0.5"
+              @input=${e => this._localTemperature = e.target.value}
+              @change=${e => this._callService('climate', 'set_temperature', config.entity, {
+                temperature: Number(e.target.value)
+              })}
+              style="
+                -webkit-appearance:none;
+                appearance:none;
+                width:100%;
+                height:6px;
+                border-radius:4px;
+                background:var(--secondary-background-color);
+                outline:none;
+                cursor:pointer;">
+          </div>
+
+          <div class="label" style="text-align:center;margin-top:4px;">
+            Target: ${temperature}°${temperature_unit}
+          </div>
+        </div>
+      </div>
+    `;
   }
+
 	_changeTemperature(entityId, delta) {
 		const state = this.hass.states[entityId];
 		if (!state) return;
@@ -2141,155 +2228,130 @@ class HaDashboardSidebar extends LitElement {
 		// invia comunque il comando a HA
 		this._callService('climate', 'set_temperature', entityId, { temperature:newTemp });
 	}
-	_renderLight(config) {
-		const state = this.hass.states[config.entity];
-		if (!state) return html``;
+  _renderLight(config) {
+    const state = this.hass.states[config.entity];
+    if (!state) return html``;
 
-		const isOn = state.state === "on";
+    const isOn = state.state === "on";
+    const supportsBrightness = "brightness" in state.attributes;
+    const supportsKelvin = "color_temp_kelvin" in state.attributes ||
+      (state.attributes.supported_color_modes ?? []).some(m => ["color_temp","kelvin"].includes(m));
+    const supportsColor = (state.attributes.supported_color_modes ?? []).some(m => ["rgb","rgbw","rgbww","hs"].includes(m));
+    const compact = !supportsBrightness && !supportsKelvin && !supportsColor;
 
-		/* -------- capabilità disponibili --------------------------- */
-		const supportsBrightness = "brightness" in state.attributes;
-		const supportsKelvin     = "color_temp_kelvin" in state.attributes
-		                           || (state.attributes.supported_color_modes ?? [])
-		                                 .some(m => ["color_temp","kelvin"].includes(m));
-		const supportsColor      = (state.attributes.supported_color_modes ?? [])
-		                                 .some(m => ["rgb","rgbw","rgbww","hs"].includes(m));
+    if (supportsBrightness && (this._localBrightness == null || !isOn)) {
+      this._localBrightness = isOn && state.attributes.brightness
+        ? Math.round((state.attributes.brightness / 255) * 100)
+        : 0;
+    }
+    if (supportsKelvin && (this._localKelvin == null || !isOn)) {
+      this._localKelvin = isOn
+        ? (state.attributes.color_temp_kelvin || 4000)
+        : 4000;
+    }
 
-		/* -------- compatta se non ci sono controlli extra ---------- */
-		const compact = !supportsBrightness && !supportsKelvin && !supportsColor;
+    if (this._collapsed) {
+      return html`
+        <div class="card light${compact ? ' compact' : ''}">
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, "light")}
+          </div>
+        </div>`;
+    }
 
-		/* -------- buffer locali (evita slider bounce) -------------- */
-		if (supportsBrightness) {
-			if (this._localBrightness == null || !isOn) {
-				this._localBrightness = isOn && state.attributes.brightness
-					? Math.round((state.attributes.brightness / 255) * 100)
-					: 0;                // reset a 0 se la luce è off
-			}
-		}
-		if (supportsKelvin) {
-			if (this._localKelvin == null || !isOn) {
-				this._localKelvin = isOn
-					? (state.attributes.color_temp_kelvin || 4000)
-					: 4000;             // default a metà scala quando off
-			}
-		}
+    return html`
+      <div class="card light${compact ? ' compact' : ''}">
+        <div class="light-header">
+          <div class="value"
+               @click=${e => e.stopPropagation()}>
+            ${config.name || state.attributes.friendly_name}
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" ?checked=${isOn}
+              @change=${() => this._callService(
+                "light",
+                isOn ? "turn_off" : "turn_on",
+                config.entity)}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
 
-		/* -------- modalità COLLAPSED ------------------------------- */
-		if (this._collapsed) {
-			return html`
-				<div class="card light${compact ? ' compact' : ''}">
-					<div class="collapsed-clickable-box"
-							 @click=${e => this._handleTapAction(e, config)}
-							 @contextmenu=${e => this._handleHoldAction(e, config)}>
-						<div class="icon">${this._renderIcon(config, "light")}</div>
-					</div>
-				</div>`;
-		}
-
-		/* -------- UI ESPANSA -------------------------------------- */
-		return html`
-			<div class="card light${compact ? ' compact' : ''}">
-				<!-- header: titolo + switch -->
-				<div class="light-header">
-					<div class="value"
-							 @click=${e => { e.stopPropagation(); this._handleTapAction(e, config);} }>
-						${config.name || state.attributes.friendly_name}
-					</div>
-
-					<label class="toggle-switch" @click=${e => e.stopPropagation()}>
-						<input type="checkbox" ?checked=${isOn}
-									 @change=${() => this._callService(
-													"light",
-													isOn ? "turn_off" : "turn_on",
-													config.entity)} >
-						<span class="toggle-slider"></span>
-					</label>
-				</div>
-
-				<!-- Controlli mostrati solo se ON e supportati -------- -->
-				${isOn && (supportsBrightness || supportsKelvin || supportsColor) ? html`
-					<!-- Brightness -->
+        ${isOn && (supportsBrightness || supportsKelvin || supportsColor) ? html`
           ${supportsBrightness ? html`
-           <div class="slider-container">
-             <input type="range" class="slider"
-                    .value=${this._localBrightness}
-                    @input=${e => this._localBrightness = Number(e.target.value)}
-                    @change=${e => this._callService(
-                        "light","turn_on",config.entity,
-                        { brightness_pct:Number(e.target.value) })}>
-             <div class="label" style="text-align:center; margin-top:8px;">
-               ${this._localBrightness}%
-             </div>
-           </div>` : ""}
-					<!-- Kelvin -->
-					${supportsKelvin ? html`
-						<div class="slider-container">
-							<input type="range" class="slider"
-										 min="2000" max="6500" step="50"
-										 .value=${this._localKelvin}
-										 @input=${e => this._localKelvin = Number(e.target.value)}
-										 @change=${e => this._callService(
-											 "light","turn_on",config.entity,
-											 { kelvin:Number(e.target.value) })}>
-							<div class="label" style="text-align:center;">
-								${this._localKelvin} K
-							</div>
-						</div>` : ""}
+            <div class="slider-container">
+              <input type="range" class="slider"
+                .value=${this._localBrightness}
+                @input=${e => this._localBrightness = Number(e.target.value)}
+                @change=${e => this._callService(
+                  "light", "turn_on", config.entity,
+                  { brightness_pct: Number(e.target.value) })}>
+              <div class="label" style="text-align:center; margin-top:8px;">
+                ${this._localBrightness}%
+              </div>
+            </div>` : ""}
 
-					<!-- Color picker -->
-					${supportsColor ? html`
-						<div class="button-row" style="justify-content:center;">
-							<button class="control-button" title="RGB picker"
-											@click=${() => this._showMoreInfo(config.entity)}>🎨</button>
-						</div>` : ""}
-				` : "" }
-			</div>`;
-	}
+          ${supportsKelvin ? html`
+            <div class="slider-container">
+              <input type="range" class="slider"
+                min="2000" max="6500" step="50"
+                .value=${this._localKelvin}
+                @input=${e => this._localKelvin = Number(e.target.value)}
+                @change=${e => this._callService(
+                  "light", "turn_on", config.entity,
+                  { kelvin: Number(e.target.value) })}>
+              <div class="label" style="text-align:center;">
+                ${this._localKelvin} K
+              </div>
+            </div>` : ""}
 
-	_renderSwitch(config) {
-		const state = this.hass.states[config.entity];
-		if (!state) return html``;
+          ${supportsColor ? html`
+            <div class="button-row" style="justify-content:center;">
+              <button class="control-button" title="RGB picker"
+                @click=${() => this._showMoreInfo(config.entity)}>🎨</button>
+            </div>` : ""}
+        ` : ""}
+      </div>`;
+  }
+  _renderSwitch(config) {
+    const state = this.hass.states[config.entity];
+    if (!state) return html``;
 
-		const isOn   = state.state === 'on';
-		const domain = config.entity.split('.')[0];
+    const isOn = state.state === 'on';
+    const domain = config.entity.split('.')[0];
 
-		return html`
-			<div class="card switch">
-				${this._collapsed ? html`
-					<div class="collapsed-clickable-box"
-							 tabindex="0"
-							 @click=${e => this._handleTapAction(e, config)}
-							 @contextmenu=${e => this._handleHoldAction(e, config)}>
-						<div class="icon">
-							${this._renderIcon(config, 'switch')}
-						</div>
-					</div>
-				` : html`
-					<div class="switch-header"
-							 style="display:flex;justify-content:space-between;
-												align-items:center;width:100%;padding:0 6px;">
-						<div class="value"
-								 @click=${e => { e.stopPropagation(); this._handleTapAction(e, config);} }>
-							${config.name || state.attributes.friendly_name}
-						</div>
-
-						<label class="toggle-switch" @click=${e => e.stopPropagation()}>
-							<input type="checkbox" ?checked=${isOn}
-										 @change=${e => {
-											 e.stopPropagation();
-											 this._callService(
-												 domain,
-												 isOn ? 'turn_off' : 'turn_on',
-												 config.entity);
-										 }}>
-							<span class="toggle-slider"></span>
-						</label>
-					</div>
-				`}
-			</div>
-		`;
-	}
-
+    return html`
+      <div class="card switch">
+        ${this._collapsed ? html`
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, 'switch')}
+          </div>
+        ` : html`
+          <div class="switch-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:0 6px;">
+            <div class="value"
+                 @click=${e => e.stopPropagation()}>
+              ${config.name || state.attributes.friendly_name}
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" ?checked=${isOn}
+                @change=${() => this._callService(
+                  domain,
+                  isOn ? 'turn_off' : 'turn_on',
+                  config.entity)}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        `}
+      </div>
+    `;
+  }
   _renderButton(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2298,213 +2360,217 @@ class HaDashboardSidebar extends LitElement {
     const name = config.name || state.attributes.friendly_name;
     const service = domain === 'script' ? 'turn_on' : 'press';
 
+    if (this._collapsed) {
+      return html`
+        <div class="card button">
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, domain)}
+          </div>
+        </div>
+      `;
+    }
+
     return html`
       <div class="card button">
-        ${this._collapsed ? html`
-          <div class="collapsed-clickable-box"
-            tabindex="0"
-            @click=${(e) => {
-              e.stopPropagation();
-              this._callService(domain, service, config.entity);
-            }}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
-            <div class="icon">
-              ${this._renderIcon(config, domain)}
-            </div>
-          </div>
-        ` : html`
-          <div class="value" @click=${(e) => { e.stopPropagation(); this._handleTapAction(e, config); }}>
-            ${name}
-          </div>
-          <button class="control-button"
-            @click=${(e) => {
-              e.stopPropagation();
-              this._callService(domain, service, config.entity);
-            }}>
-            <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
-          </button>
-        `}
+        <div class="value" @click=${e => e.stopPropagation()}>
+          ${name}
+        </div>
+        <button class="control-button"
+                @click=${e => {
+                  e.stopPropagation();
+                  this._callService(domain, service, config.entity);
+                }}>
+          <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
+        </button>
       </div>
     `;
   }
-	_renderFan(config) {
-		const state = this.hass.states[config.entity];
-		if (!state) return html``;
 
-		const isOn = state.state === 'on';
-		const speed = state.attributes.percentage ?? 0;
+  _renderFan(config) {
+    const state = this.hass.states[config.entity];
+    if (!state) return html``;
 
-		// buffer locale
-		if (this._localFanSpeed == null || !isOn) {
-			this._localFanSpeed = isOn ? speed : 0;
-		}
+    const isOn = state.state === 'on';
+    const speed = state.attributes.percentage ?? 0;
 
-		return html`
-			<div class="card fan">
-				${this._collapsed ? html`
-					<div class="collapsed-clickable-box"
-							 tabindex="0"
-							 @click=${e => this._handleTapAction(e, config)}
-							 @contextmenu=${e => this._handleHoldAction(e, config)}>
-						<div class="icon">${this._renderIcon(config, 'fan')}</div>
-					</div>
-				` : html`
-					<div class="value"
-							 tabindex="0"
-							 @click=${e => { e.stopPropagation(); this._handleAction(e, config); }}
-							 @contextmenu=${e => this._handleHoldAction(e, config)}>
-						${config.name || state.attributes.friendly_name}
-					</div>
+    if (this._localFanSpeed == null || !isOn) {
+      this._localFanSpeed = isOn ? speed : 0;
+    }
 
-					<label class="toggle-switch"
-								 @click=${e => e.stopPropagation()}>
-						<input
-							type="checkbox"
-							?checked=${isOn}
-							@click=${e => e.stopPropagation()}
-							@change=${e => {
-								e.stopPropagation();
-								this._callService(
-									'fan',
-									isOn ? 'turn_off' : 'turn_on',
-									config.entity
-								);
-							}}>
-						<span class="toggle-slider"></span>
-					</label>
+    if (this._collapsed) {
+      return html`
+        <div class="card fan">
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, "fan")}
+          </div>
+        </div>
+      `;
+    }
 
-					${isOn ? html`
-						<div class="slider-container" style="margin-top:10px;width:100%;">
-							<input
-								type="range"
-								class="slider"
-								@click=${e => e.stopPropagation()}
-								.value=${this._localFanSpeed}
-								@input=${e => this._localFanSpeed = Number(e.target.value)}
-								@change=${e => {
-									e.stopPropagation();
-									this._callService(
-										'fan',
-										'set_percentage',
-										config.entity,
-										{ percentage: Number(e.target.value) }
-									);
-								}}
-								min="0"
-								max="100"
-								step="1"
-								style="
-									-webkit-appearance:none;
-									appearance:none;
-									width:100%;
-									height:6px;
-									border-radius:4px;
-									background:var(--secondary-background-color);
-									outline:none;
-									cursor:pointer;">
-							<div class="label" style="text-align:center; margin-top:4px;">
-								${this._localFanSpeed}%
-							</div>
-						</div>
-					` : ''}
-				`}
-			</div>
-		`;
-	}
+    return html`
+      <div class="card fan">
+        <div class="value"
+             @click=${e => e.stopPropagation()}>
+          ${config.name || state.attributes.friendly_name}
+        </div>
 
-	_renderMediaPlayer(config) {
-		const state = this.hass.states[config.entity];
-		if (!state) return html``;
+        <label class="toggle-switch" @click=${e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            ?checked=${isOn}
+            @click=${e => e.stopPropagation()}
+            @change=${e => {
+              e.stopPropagation();
+              this._callService(
+                'fan',
+                isOn ? 'turn_off' : 'turn_on',
+                config.entity
+              );
+            }}>
+          <span class="toggle-slider"></span>
+        </label>
 
-		const isPlaying = state.state === 'playing';
-		const volume    = state.attributes.volume_level || 0;
+        ${isOn ? html`
+          <div class="slider-container" style="margin-top:10px;width:100%;">
+            <input
+              type="range"
+              class="slider"
+              .value=${this._localFanSpeed}
+              @input=${e => this._localFanSpeed = Number(e.target.value)}
+              @change=${e => this._callService(
+                'fan',
+                'set_percentage',
+                config.entity,
+                { percentage: Number(e.target.value) }
+              )}
+              min="0"
+              max="100"
+              step="1"
+              style="
+                -webkit-appearance:none;
+                appearance:none;
+                width:100%;
+                height:6px;
+                border-radius:4px;
+                background:var(--secondary-background-color);
+                outline:none;
+                cursor:pointer;">
+            <div class="label" style="text-align:center; margin-top:4px;">
+              ${this._localFanSpeed}%
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+  _renderMediaPlayer(config) {
+    const state = this.hass.states[config.entity];
+    if (!state) return html``;
 
-		const mediaControls = [
-			{ action: 'media_previous_track', icon: 'mdi:skip-previous' },
-			{ action: 'media_play_pause',     icon: isPlaying ? 'mdi:pause' : 'mdi:play' },
-			{ action: 'media_next_track',     icon: 'mdi:skip-next' }
-		];
+    const isPlaying = state.state === 'playing';
+    const volume = state.attributes.volume_level || 0;
 
-		return html`
-			<div class="card media-player">
-				${this._collapsed ? html`
-					<!-- COLLAPSED: icona-bottone che apre mini-popup -->
-					<div class="collapsed-clickable-box"
-							 tabindex="0"
-							 @click=${(e) => this._handleTapAction(e, config)}
-							 @contextmenu=${(e) => this._handleHoldAction(e, config)}>
-						<div class="icon">
-							${this._renderIcon(config, 'media_player')}
-						</div>
-					</div>
-				` : html`
-					<!-- ESPANSA -->
-					<div class="value"
-							 @click=${(e) => { e.stopPropagation(); this._handleTapAction(e, config);} }>
-						${config.name || state.attributes.friendly_name}
-					</div>
+    const mediaControls = [
+      { action: 'media_previous_track', icon: 'mdi:skip-previous' },
+      { action: 'media_play_pause', icon: isPlaying ? 'mdi:pause' : 'mdi:play' },
+      { action: 'media_next_track', icon: 'mdi:skip-next' }
+    ];
 
-					<div class="media-info">
-						<div class="track-name">${state.attributes.media_title || 'Nessuna traccia in riproduzione'}</div>
-						<div class="track-artist">${state.attributes.media_artist || ''}</div>
-					</div>
+    if (this._collapsed) {
+      return html`
+        <div class="card media-player">
+          <div class="collapsed-clickable-box"
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${e => this._handleTapAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
+            ${this._renderIcon(config, "media_player")}
+          </div>
+        </div>
+      `;
+    }
 
-					<div class="media-controls"
-							 style="display:flex;justify-content:center;gap:8px;margin-top:12px;">
-						${mediaControls.map(control => html`
-							<button class="dash-button"
-											style="
-												background:var(--primary-color);
-												color:var(--text-primary-color,#ffffff);
-												border:none;border-radius:10px;padding:8px;
-												width:36px;height:36px;display:inline-flex;
-												align-items:center;justify-content:center;
-												cursor:pointer;transition:all .3s ease;"
-											@click=${(e) => { e.stopPropagation(); this._callService('media_player', control.action, config.entity);} }>
-								<ha-icon icon="${control.icon}"></ha-icon>
-							</button>
-						`)}
-					</div>
+    return html`
+      <div class="card media-player">
+        <div class="value"
+             @click=${e => {
+               e.stopPropagation();
+               this._handleTapAction(e, config);
+             }}>
+          ${config.name || state.attributes.friendly_name}
+        </div>
 
-					<div class="slider-container"
-							 style="margin-top:10px;width:100%;">
-						<input type="range"
-									 class="slider"
-									 .value=${volume * 100}
-									 min="0" max="100" step="1"
-									 @change=${(e) => this._callService(
-										 'media_player','volume_set',config.entity,
-										 { volume_level:Number(e.target.value)/100 })}>
-					</div>
+        <div class="media-info">
+          <div class="track-name">${state.attributes.media_title || 'Nessuna traccia in riproduzione'}</div>
+          <div class="track-artist">${state.attributes.media_artist || ''}</div>
+        </div>
 
-					<style>
-						input.slider::-webkit-slider-thumb {
-							-webkit-appearance: none;
-							appearance: none;
-							width: 16px; height: 16px;
-							border-radius: 50%;
-							background: var(--primary-color);
-							cursor: pointer;
-							box-shadow: 0 0 4px var(--primary-color);
-						}
-						input.slider::-moz-range-thumb {
-							width: 16px; height: 16px;
-							border-radius: 50%;
-							background: var(--primary-color);
-							cursor: pointer;
-							box-shadow: 0 0 4px var(--primary-color);
-						}
-						input.slider::-webkit-slider-runnable-track,
-						input.slider::-moz-range-track {
-							width: 100%; height: 6px;
-							border-radius: 4px;
-							background: var(--secondary-background-color);
-						}
-					</style>
-				`}
-			</div>
-		`;
-	}
+        <div class="media-controls"
+             style="display:flex;justify-content:center;gap:8px;margin-top:12px;">
+          ${mediaControls.map(control => html`
+            <button class="dash-button"
+                    style="
+                      background:var(--primary-color);
+                      color:var(--text-primary-color,#ffffff);
+                      border:none;border-radius:10px;padding:8px;
+                      width:36px;height:36px;display:inline-flex;
+                      align-items:center;justify-content:center;
+                      cursor:pointer;transition:all .3s ease;"
+                    @click=${e => {
+                      e.stopPropagation();
+                      this._callService('media_player', control.action, config.entity);
+                    }}>
+              <ha-icon icon="${control.icon}"></ha-icon>
+            </button>
+          `)}
+        </div>
+
+        <div class="slider-container" style="margin-top:10px;width:100%;">
+          <input type="range"
+                 class="slider"
+                 .value=${volume * 100}
+                 min="0" max="100" step="1"
+                 @change=${e => this._callService(
+                   'media_player', 'volume_set', config.entity,
+                   { volume_level: Number(e.target.value) / 100 })}>
+        </div>
+
+        <style>
+          input.slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            box-shadow: 0 0 4px var(--primary-color);
+          }
+          input.slider::-moz-range-thumb {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            box-shadow: 0 0 4px var(--primary-color);
+          }
+          input.slider::-webkit-slider-runnable-track,
+          input.slider::-moz-range-track {
+            width: 100%; height: 6px;
+            border-radius: 4px;
+            background: var(--secondary-background-color);
+          }
+        </style>
+      </div>
+    `;
+  }
+
   _renderSensor(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2565,9 +2631,10 @@ class HaDashboardSidebar extends LitElement {
       <div class="card weather">
         ${this._collapsed ? html`
           <div class="collapsed-clickable-box"
-            tabindex="0"
-            @click=${(e) => this._handleAction(e, config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               tabindex="0"
+               @click=${(e) => this._handleTapAction(e, config)}
+               @contextmenu=${(e) => this._handleHoldAction(e, config)}>
             <div class="weather-icon ${weatherIcon.animation}">
               ${weatherIcon.icon}
             </div>
@@ -2577,9 +2644,9 @@ class HaDashboardSidebar extends LitElement {
             ${weatherIcon.icon}
           </div>
           <div class="value"
-            tabindex="0"
-            @click=${(e) => this._handleAction(e, config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+               tabindex="0"
+               @click=${(e) => this._handleAction(e, config)}
+               @contextmenu=${(e) => this._handleHoldAction(e, config)}>
             ${state.attributes.temperature}°${state.attributes.temperature_unit || ""}
           </div>
           <div class="label">${config.name || weatherState}</div>
@@ -2592,6 +2659,7 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
+
   _renderPerson(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2667,7 +2735,6 @@ class HaDashboardSidebar extends LitElement {
     // Fallback per zone personalizzate → capitalizza
     return this._capitalize(stateKey.replace(/_/g, ' '));
   }
-
   _renderIcon(config = {}, fallbackType = null) {
     const domain = config.entity?.split('.')?.[0];
     const state = this.hass?.states?.[config.entity];
