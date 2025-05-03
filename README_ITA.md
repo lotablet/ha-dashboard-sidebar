@@ -7,7 +7,8 @@ Questa guida descrive **tutte le funzionalità disponibili** per la custom card 
 ## Installazione automatica
 Basta premere il pulsante qui sotto:
 
-[![Apri la tua istanza di Home Assistant e apri un repository all'interno del Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=LoTableT&repository=https%3A%2F%2Fgithub.com%2Flotablet%2Fha-dashboard-sidebar&category=Dashboard)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=lotablet&repository=ha-dashboard-sidebar&category=plugin)
+
 
 ## Installazione manuale
 Per installare manualmente questa card, segui questi passaggi:
