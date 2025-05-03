@@ -131,6 +131,7 @@ class HaDashboardSidebar extends LitElement {
     return {
       type: 'custom:ha-dashboard-sidebar',
       title: 'Sidebar',
+      width: '250px',
       entities: [
         {
           type: 'sensor',
@@ -196,6 +197,7 @@ class HaDashboardSidebar extends LitElement {
         height: 100%;
       }
       :root {
+        --dashboard-width: 200px;
         --state-icon-active-color: var(--primary-color);
       }
       ha-card {
@@ -1092,7 +1094,7 @@ class HaDashboardSidebar extends LitElement {
       .dashboard.vertical:not(.collapsed) .card.light,
       .dashboard.vertical:not(.collapsed) .card.switch,
       .dashboard.vertical:not(.collapsed) .card.button {
-        width: 180px;
+        width: 90%;
         padding: 16px;
         display: flex;
         flex-direction: column;
@@ -1172,7 +1174,7 @@ class HaDashboardSidebar extends LitElement {
       }
       .dashboard.vertical {
         flex-direction: column;
-        width: var(--dashboard-width, 300px) !important;
+        width: var(--dashboard-width, 200px) !important;
       }
       /* Layout base ORIZZONTALE */
       .dashboard.horizontal {
