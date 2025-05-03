@@ -1,4 +1,7 @@
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://www.buymeacoffee.com/lotablet)
+
+
+
 # 📘 `ha-dashboard-sidebar` for Home Assistant
 
 This guide describes **all available features** for the `ha-dashboard-sidebar` custom card, compatible with Lovelace in Home Assistant.
@@ -27,6 +30,8 @@ To manually install this card, follow these steps:
 
 At this point, the card will be available for use in your dashboard.
 
+ !["gif"](https://github.com/lotablet/ha-dashboard-sidebar/blob/main/gif/gif1.gif)
+ 
 ## 🔧 Basic configuration
 
 ```yaml
