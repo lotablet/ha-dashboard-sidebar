@@ -14,7 +14,7 @@ type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
 mode: horizontal       # Default "vertical" NOTE: HORIZONTAL TO BE FIXED   
 align: center          # Default left, choose "right" or "left" if you want to align on the left or right side
-width: 90vw
+width: 250px
 height: 500px          # control height
 collapsed: true        # whether the sidebar starts collapsed
 entities:
@@ -46,7 +46,6 @@ entities:
 | `light`        | Shows on/off toggle and brightness slider                       | `light.desk_lamp`                             |
 | `switch`       | Toggle switch                                                   | `switch.fryer`                                |
 | `script`       | Button to execute a script                                      | `script.restart_router`                       |
-| `input_text`   | Editable input field                                            | `input_text.profile_name`                     |
 | `media_player` | Track info, controls, and volume                                | `media_player.spotify_john`                   |
 | `weather`      | Shows weather icon and forecast                                 | `weather.home`                                |
 | `custom_card`  | Embed any Lovelace card (e.g. Mushroom)                         | `card:` embedded config                        |
@@ -141,7 +140,7 @@ entities:
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
-width: 300px
+width: 250px
 mode: vertical
 align: left
 collapsed: true
