@@ -10,7 +10,8 @@ This guide describes **all available features** for the `ha-dashboard-sidebar` c
 ## Automatic install
 Just press this button below:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=LoTableT&repository=https%3A%2F%2Fgithub.com%2Flotablet%2Fha-dashboard-sidebar&category=Dashboard)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=lotablet&repository=ha-dashboard-sidebar&category=plugin)
+
 
 ## Manual install
 To manually install this card, follow these steps:
