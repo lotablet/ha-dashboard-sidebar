@@ -164,7 +164,68 @@ card_mod:
       --ha-card-box-shadow: none;
     }
 ```
+## ➡️ Full Example
+```yaml
+type: custom:ha-dashboard-sidebar
+title: Welcome, {{ user }}
+mode: vertical
+align: left
+width: 250px
+collapsed: true
+entities:
+  - type: weather
+    entity: weather.weather
+  - type: person
+    entity: person.lorenzo
+    tracker_entity: device_tracker.lorenzo
+  - type: power
+    name: Power Consumption
+    entity: sensor.home_power
+  - type: sensor
+    name: Lights
+    entity: sensor.counter_lights_on
+  - type: sensor
+    collapsed: true
+    entity: sensor.tapparelle_aperte
+    icon: phu:top-window-open
+    name: Cover
+    tap_action:
+      action: more-info
+      entity: cover.cover_group_home
+  - type: climate
+    entity: climate.ac_living_room
+    collapsed: false
+  - type: media_player
+    entity: media_player.living_room
+    collapsed: false
+  - type: custom_card
+    collapsed: false
+    card:
+      - type: custom:mushroom-entity-card
+        entity: switch.studio
+        fill_container: true
+        icon: mdi:air-conditioner
+        layout: vertical
+        name: Studio
+card_mod:
+  style: |
+    ha-card {
+      border-radius: 16px;
+      box-shadow: 0 0 12px #000;
+      width: 80vw
+      height: 100px
+      --card-background-color: black;
+      --primary-color: #ffcc00;
+      --primary-text-color: white;
+      --secondary-background-color: #333333;
+      --divider-color: rgba(255,255,255,0.1);
+      --state-icon-active-color: #00e676;
+      --text-primary-color: #ffffff;
+      --ha-card-border-radius: 20px;
+      --ha-card-box-shadow: none;
+    }
 
+```
 ## 📌 Final notes
 
 - The card is **responsive**, adapts to `vertical` or `horizontal` layout
