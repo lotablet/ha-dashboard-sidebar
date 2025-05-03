@@ -26,6 +26,9 @@ Per installare manualmente questa card, segui questi passaggi:
 
 A questo punto, la card sarà  disponibile per l'uso nel tuo dashboard.
 
+ !["gif"](https://github.com/lotablet/ha-dashboard-sidebar/blob/main/gif/gif1.gif)
+
+
 ## 🔧 Configurazione base
 
 ```yaml
