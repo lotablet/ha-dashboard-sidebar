@@ -1,4 +1,4 @@
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/lotablet)
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://www.buymeacoffee.com/lotablet)
 # 📘 `ha-dashboard-sidebar` for Home Assistant
 
 This guide describes **all available features** for the `ha-dashboard-sidebar` custom card, compatible with Lovelace in Home Assistant.
