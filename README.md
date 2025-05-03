@@ -186,12 +186,12 @@ entities:
     entity: sensor.counter_lights_on
   - type: sensor
     collapsed: true
-    entity: sensor.tapparelle_aperte
+    entity: sensor.topen_shutters
     icon: phu:top-window-open
     name: Cover
     tap_action:
       action: more-info
-      entity: cover.cover_group_home
+      entity: cover.all_shutters 
   - type: climate
     entity: climate.ac_living_room
     collapsed: false
