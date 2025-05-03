@@ -11,8 +11,8 @@ title: Benvenuto, {{ user }}
 mode: horizontal       # Default "vertical"
 align: center          # Default "left", scegli "right" o "left" se vuoi l`orientamento a destra o a sinistra
 collapsed: true        # mostrare o non mostrare in sidebar espansa o collassata
-width: 80vw            # Controllo Larghezza
-height: 10vh           # Controllo Altezza
+width: 250px           # Controllo Larghezza
+height: 50vh           # Controllo Altezza
 entities:
   - type: sensor
     entity: sensor.example
@@ -42,7 +42,6 @@ entities:
 | `light`       | Mostra stato e slider luminosità                             | `light.lampada_scrivania`                     |
 | `switch`      | Interruttore toggle                                          | `switch.friggitrice`                          |
 | `script`      | Pulsante per eseguire uno script                             | `script.riavvia_router`                       |
-| `input_text`  | Campo di testo modificabile                                  | `input_text.nome_profilo`                     |
 | `media_player`| Stato, controlli play/pause/volume                           | `media_player.spotify_lorenzo`                |
 | `weather`     | Mostra meteo attuale e previsioni                            | `weather.home`                                |
 | `custom_card` | Inserisce una card Lovelace custom all’interno               | `card:` con tipo embedded (es. `mushroom`)    |
@@ -138,6 +137,9 @@ entities:
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Benvenuto, {{ user }}
+mode: vertical
+align: left
+width: 250px
 collapsed: true
 entities:
   - type: switch
@@ -164,6 +166,9 @@ style: |
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Benvenuto, {{ user }}
+mode: vertical
+align: left
+width: 250px
 collapsed: true
 entities:
   - type: weather
