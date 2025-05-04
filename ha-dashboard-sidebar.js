@@ -1,6 +1,157 @@
 //<!-- Card developed by LoTablet - 2025 -->
-import { LitElement, html, css } from "https://unpkg.com/lit@2.8.0/index.js?module";
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
+import { loadHaComponents, DEFAULT_HA_COMPONENTS } from
+        "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
+loadHaComponents([
+  ...DEFAULT_HA_COMPONENTS,
+  "ha-icon-picker",
+  "hui-card-picker",
+  "ha-dialog"
+]).catch(()=>/* niente panico se già caricati */{});
+/* Dashboard‑Sidebar editor – compact selectors + Card N label + delete */
+import { LitElement, html, css } from "https://unpkg.com/lit@2.8.0/index.js?module";
+
+class HaDashboardSidebarEditor extends LitElement {
+  static properties = { hass:{type:Object}, _config:{type:Object} };
+
+  constructor(){
+    super();
+    this._config = { title:"", width:"", mode:"vertical", align:"left", entities:[] };
+  }
+
+  /* ------------- HA editor API ------------- */
+  setConfig(cfg){
+    this._config = {
+      type : "custom:ha-dashboard-sidebar",
+      title: cfg?.title  ?? "",
+      width: cfg?.width  ?? "",
+      mode : cfg?.mode   ?? "vertical",
+      align: cfg?.align  ?? "left",
+      entities: Array.isArray(cfg?.entities) ? cfg.entities : [],
+    };
+  }
+  getConfig(){ return this._config; }
+
+  /* ------------- helpers ------------- */
+  _push(field,val){
+    this._config = { ...this._config, [field]: val };
+    this.dispatchEvent(new CustomEvent("config-changed",{
+      detail:{ config:{ type:"custom:ha-dashboard-sidebar", ...this._config } },
+      bubbles:true, composed:true }));
+    this.requestUpdate();
+  }
+  _row(idx,key,val){
+    const ents=[...this._config.entities];
+    ents[idx] = { ...ents[idx], [key]: val };
+    this._push("entities",ents);
+  }
+  _add(){ this._push("entities",[...this._config.entities,{ type:"sensor",entity:"" }]); }
+  _del(idx){ const ents=[...this._config.entities]; ents.splice(idx,1); this._push("entities",ents); }
+
+  _openYamlEditor(){
+    /* opens the built‑in YAML view of card picker dialog */
+    const dialog = this.closest("ha-dialog") || document.querySelector("ha-dialog[open]");
+    dialog?.querySelector('mwc-button[slot="secondaryaction"], mwc-button[slot="secondaryAction"]')?.click();
+  }
+
+  /* ------------- render ------------- */
+/* … inside HaDashboardSidebarEditor … */
+
+/* ------------- render ------------- */
+  render(){
+    if (!this.hass) return html``;
+
+    const typeOpts = [
+      "sensor","person","weather","light","switch","fan","cover",
+      "climate","media_player","button","script","custom_card"
+    ].map(t => ({ value:t, label: t[0].toUpperCase() + t.slice(1) }));
+
+    return html`
+      <!-- Title -->
+      <ha-textfield class="full" label="Sidebar title"
+        .value=${this._config.title}
+        @input=${e=>this._push("title",e.target.value)}>
+      </ha-textfield>
+
+      <!-- Mode + Align – now two neat selects in ONE row -->
+      <div class="row">
+        <ha-selector class="sel small" .hass=${this.hass}
+          .selector=${{select:{options:["Vertical","Horizontal"].map(l=>({value:l.toLowerCase(),label:l}))}}}
+          .value=${this._config.mode}
+          @value-changed=${e=>this._push("mode",e.detail.value)}>
+        </ha-selector>
+
+        <ha-selector class="sel small" .hass=${this.hass}
+          .selector=${{select:{options:["Left","Right","None"].map(l=>({value:l.toLowerCase(),label:l}))}}}
+          .value=${this._config.align}
+          ?hidden=${this._config.mode==="horizontal"}
+          @value-changed=${e=>this._push("align",e.detail.value)}>
+        </ha-selector>
+      </div>
+
+      <!-- Width -->
+      <ha-textfield class="full" label="Width (e.g. 250px or 25%)"
+        .value=${this._config.width}
+        @change=${e=>this._push("width",e.target.value)}>
+      </ha-textfield>
+
+      <!-- Cards list -->
+      ${this._config.entities.map((ent,i)=>html`
+        <div class="divider">
+          <b>Card ${i+1}</b><span></span>
+          <mwc-icon-button class="delete" icon="mdi:close"
+            @click=${()=>this._del(i)} title="Remove"></mwc-icon-button>
+        </div>
+
+        <!-- Type + Icon -->
+        <div class="row">
+          <ha-selector      class="sel small" .hass=${this.hass}
+            .selector=${{select:{options:typeOpts}}}
+            .value=${ent.type || "sensor"}
+            @value-changed=${e=>this._row(i,"type",e.detail.value)}>
+          </ha-selector>
+
+          <ha-icon-picker   class="sel small" .hass=${this.hass}
+            .value=${ent.icon || ""}
+            @value-changed=${e=>this._row(i,"icon",e.detail.value)}>
+          </ha-icon-picker>
+        </div>
+
+        <!-- Entity OR YAML -->
+        ${ent.type==="custom_card"
+          ? html`<mwc-button class="yaml" @click=${this._openYamlEditor}>Go YAML</mwc-button>`
+          : html`
+            <ha-selector class="full" .hass=${this.hass}
+              .selector=${{entity:{}}}
+              .value=${ent.entity}
+              @value-changed=${e=>this._row(i,"entity",e.detail.value)}>
+            </ha-selector>`}
+      `)}
+
+      <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
+    `;
+  }
+
+  /* ------------- styles ------------- */
+  static styles = css`
+    :host{display:block;padding:16px;font-size:14px}
+    .row{display:flex;gap:8px;margin:6px 0}
+    .full{width:100%;margin:6px 0}
+    .small{flex:1;--mdc-menu-min-width:110px}
+    .sel{--mdc-shape-small:6px}
+    .divider{
+      display:flex;align-items:center;gap:8px;margin:14px 0 6px;
+      color:var(--secondary-text-color);
+    }
+    .divider span{flex:1;height:1px;background:var(--divider-color,rgba(255,255,255,0.15));}
+    .delete{--mdc-icon-size:18px;color:var(--secondary-text-color);}
+    .yaml{width:100%;margin-top:4px}
+    .add{margin-top:12px}
+  `;
+}
+
+customElements.define("ha-dashboard-sidebar-editor", HaDashboardSidebarEditor);
+
 class HaDashboardSidebar extends LitElement {
   static get properties() {
     return {
@@ -151,6 +302,9 @@ class HaDashboardSidebar extends LitElement {
       ]
     };
   }
+  static getConfigElement() {
+    return document.createElement('ha-dashboard-sidebar-editor');
+  }
   async firstUpdated() {
     /* stile trasparente al card root */
     const card = this.shadowRoot.querySelector('ha-card');
@@ -182,10 +336,9 @@ class HaDashboardSidebar extends LitElement {
           ghostMap.style.display = 'none';
 
           this.shadowRoot.appendChild(ghostMap);
-          console.log(`[sidebar] Ghost map caricata per ${trackerId}`);
         }
       } catch (err) {
-        console.error('[sidebar] Errore caricamento ha-map:', err);
+        console.error('[ha-dashboard-sidebar] Errore caricamento ha-map:', err);
       }
     }
   }
@@ -2230,130 +2383,183 @@ class HaDashboardSidebar extends LitElement {
 		// invia comunque il comando a HA
 		this._callService('climate', 'set_temperature', entityId, { temperature:newTemp });
 	}
+/* ---------- RENDER LIGHT ---------- */
   _renderLight(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
 
     const isOn = state.state === "on";
     const supportsBrightness = "brightness" in state.attributes;
-    const supportsKelvin = "color_temp_kelvin" in state.attributes ||
-      (state.attributes.supported_color_modes ?? []).some(m => ["color_temp","kelvin"].includes(m));
-    const supportsColor = (state.attributes.supported_color_modes ?? []).some(m => ["rgb","rgbw","rgbww","hs"].includes(m));
+    const supportsKelvin =
+      "color_temp_kelvin" in state.attributes ||
+      (state.attributes.supported_color_modes ?? []).some(m =>
+        ["color_temp", "kelvin"].includes(m)
+      );
+    const supportsColor = (state.attributes.supported_color_modes ?? []).some(m =>
+      ["rgb", "rgbw", "rgbww", "hs"].includes(m)
+    );
     const compact = !supportsBrightness && !supportsKelvin && !supportsColor;
 
     if (supportsBrightness && (this._localBrightness == null || !isOn)) {
-      this._localBrightness = isOn && state.attributes.brightness
-        ? Math.round((state.attributes.brightness / 255) * 100)
-        : 0;
+      this._localBrightness =
+        isOn && state.attributes.brightness
+          ? Math.round((state.attributes.brightness / 255) * 100)
+          : 0;
     }
     if (supportsKelvin && (this._localKelvin == null || !isOn)) {
-      this._localKelvin = isOn
-        ? (state.attributes.color_temp_kelvin || 4000)
-        : 4000;
+      this._localKelvin = isOn ? state.attributes.color_temp_kelvin || 4000 : 4000;
     }
 
     if (this._collapsed) {
       return html`
-        <div class="card light${compact ? ' compact' : ''}">
-          <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
-               tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+        <div class="card light${compact ? " compact" : ""}">
+          <div
+            class="collapsed-clickable-box"
+            style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+            tabindex="0"
+            @click=${e => this._handleTapAction(e, config)}
+            @contextmenu=${e => this._handleHoldAction(e, config)}
+          >
             ${this._renderIcon(config, "light")}
           </div>
-        </div>`;
+        </div>
+      `;
     }
 
     return html`
-      <div class="card light${compact ? ' compact' : ''}">
+      <div class="card light${compact ? " compact" : ""}">
         <div class="light-header">
-          <div class="value"
-               @click=${e => e.stopPropagation()}>
+          <div class="value" @click=${e => e.stopPropagation()}>
             ${config.name || state.attributes.friendly_name}
           </div>
           <label class="toggle-switch">
-            <input type="checkbox" ?checked=${isOn}
-              @change=${() => this._callService(
-                "light",
-                isOn ? "turn_off" : "turn_on",
-                config.entity)}>
+            <input
+              type="checkbox"
+              .checked=${isOn}
+              @change=${e =>
+                this._callService(
+                  "light",
+                  e.target.checked ? "turn_on" : "turn_off",
+                  config.entity
+                )}
+            />
             <span class="toggle-slider"></span>
           </label>
         </div>
 
-        ${isOn && (supportsBrightness || supportsKelvin || supportsColor) ? html`
-          ${supportsBrightness ? html`
-            <div class="slider-container">
-              <input type="range" class="slider"
-                .value=${this._localBrightness}
-                @input=${e => this._localBrightness = Number(e.target.value)}
-                @change=${e => this._callService(
-                  "light", "turn_on", config.entity,
-                  { brightness_pct: Number(e.target.value) })}>
-              <div class="label" style="text-align:center; margin-top:8px;">
-                ${this._localBrightness}%
-              </div>
-            </div>` : ""}
+        ${isOn && (supportsBrightness || supportsKelvin || supportsColor)
+          ? html`
+              ${supportsBrightness
+                ? html`
+                    <div class="slider-container">
+                      <input
+                        type="range"
+                        class="slider"
+                        .value=${this._localBrightness}
+                        @input=${e => (this._localBrightness = Number(e.target.value))}
+                        @change=${e =>
+                          this._callService("light", "turn_on", config.entity, {
+                            brightness_pct: Number(e.target.value),
+                          })}
+                      />
+                      <div class="label" style="text-align:center; margin-top:8px;">
+                        ${this._localBrightness}%
+                      </div>
+                    </div>
+                  `
+                : ""}
 
-          ${supportsKelvin ? html`
-            <div class="slider-container">
-              <input type="range" class="slider"
-                min="2000" max="6500" step="50"
-                .value=${this._localKelvin}
-                @input=${e => this._localKelvin = Number(e.target.value)}
-                @change=${e => this._callService(
-                  "light", "turn_on", config.entity,
-                  { kelvin: Number(e.target.value) })}>
-              <div class="label" style="text-align:center;">
-                ${this._localKelvin} K
-              </div>
-            </div>` : ""}
+              ${supportsKelvin
+                ? html`
+                    <div class="slider-container">
+                      <input
+                        type="range"
+                        class="slider"
+                        min="2000"
+                        max="6500"
+                        step="50"
+                        .value=${this._localKelvin}
+                        @input=${e => (this._localKelvin = Number(e.target.value))}
+                        @change=${e =>
+                          this._callService("light", "turn_on", config.entity, {
+                            kelvin: Number(e.target.value),
+                          })}
+                      />
+                      <div class="label" style="text-align:center;">
+                        ${this._localKelvin} K
+                      </div>
+                    </div>
+                  `
+                : ""}
 
-          ${supportsColor ? html`
-            <div class="button-row" style="justify-content:center;">
-              <button class="control-button" title="RGB picker"
-                @click=${() => this._showMoreInfo(config.entity)}>🎨</button>
-            </div>` : ""}
-        ` : ""}
-      </div>`;
+              ${supportsColor
+                ? html`
+                    <div class="button-row" style="justify-content:center;">
+                      <button
+                        class="control-button"
+                        title="RGB picker"
+                        @click=${() => this._showMoreInfo(config.entity)}
+                      >
+                        🎨
+                      </button>
+                    </div>
+                  `
+                : ""}
+            `
+          : ""}
+      </div>
+    `;
   }
+
+  /* ---------- RENDER SWITCH ---------- */
   _renderSwitch(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
 
-    const isOn = state.state === 'on';
-    const domain = config.entity.split('.')[0];
+    const isOn = state.state === "on";
+    const domain = config.entity.split(".")[0];
 
     return html`
       <div class="card switch">
-        ${this._collapsed ? html`
-          <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
-               tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
-            ${this._renderIcon(config, 'switch')}
-          </div>
-        ` : html`
-          <div class="switch-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:0 6px;">
-            <div class="value"
-                 @click=${e => e.stopPropagation()}>
-              ${config.name || state.attributes.friendly_name}
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" ?checked=${isOn}
-                @change=${() => this._callService(
-                  domain,
-                  isOn ? 'turn_off' : 'turn_on',
-                  config.entity)}>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        `}
+        ${this._collapsed
+          ? html`
+              <div
+                class="collapsed-clickable-box"
+                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+                tabindex="0"
+                @click=${e => this._handleTapAction(e, config)}
+                @contextmenu=${e => this._handleHoldAction(e, config)}
+              >
+                ${this._renderIcon(config, "switch")}
+              </div>
+            `
+          : html`
+              <div
+                class="switch-header"
+                style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:0 6px;"
+              >
+                <div class="value" @click=${e => e.stopPropagation()}>
+                  ${config.name || state.attributes.friendly_name}
+                </div>
+                <label class="toggle-switch">
+                  <input
+                    type="checkbox"
+                    .checked=${isOn}
+                    @change=${e =>
+                      this._callService(
+                        domain,
+                        e.target.checked ? "turn_on" : "turn_off",
+                        config.entity
+                      )}
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            `}
       </div>
     `;
   }
+
   _renderButton(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2981,7 +3187,7 @@ class HaDashboardSidebar extends LitElement {
     };
   }
 }
-
+console.log(`HA Dashboard Sidebar v1 beta`);
 customElements.define("ha-dashboard-sidebar", HaDashboardSidebar);
 window.customCards = window.customCards || [];
 window.customCards.push({
