@@ -15,7 +15,8 @@ class HaDashboardSidebarEditor extends LitElement {
   static properties = {
     hass: { type: Object },
     _config: { type: Object },
-    _pickerOpenIndex: { state: true }
+    _pickerOpenIndex: { state: true },
+    _zIndexActive: { state: true }
   };
 
   constructor() {
@@ -28,6 +29,10 @@ class HaDashboardSidebarEditor extends LitElement {
       entities: []
     };
     this._pickerOpenIndex = null;
+    this._zIndexActive = false;
+    this._widthRaw = "";
+    this._heightRaw = "";
+
   }
 
   setConfig(cfg) {
@@ -35,25 +40,46 @@ class HaDashboardSidebarEditor extends LitElement {
       type: "custom:ha-dashboard-sidebar",
       title: cfg?.title ?? "",
       width: cfg?.width ?? "",
+      height: cfg?.height ?? "",  // <-- AGGIUNGI height
       mode: cfg?.mode ?? "vertical",
       align: cfg?.align ?? "left",
       entities: Array.isArray(cfg?.entities) ? cfg.entities : [],
     };
+
+    // Serve per i campi controllati nei textfield (evita reset visivi)
+    this._widthRaw = this._config.width?.replace("px", "") ?? "";
+    this._heightRaw = this._config.height?.replace("px", "") ?? "";
   }
 
   getConfig() {
     return this._config;
   }
-
   _push(field, val) {
-    this._config = { ...this._config, [field]: val };
+    const updated = { ...this._config };
+
+    if (field === "width" || field === "height") {
+      const clean = val?.trim();
+      if (!clean) {
+        delete updated[field];
+      } else if (/^\d+$/.test(clean)) {
+        updated[field] = `${clean}px`;
+      } else {
+        updated[field] = clean;
+      }
+    } else {
+      updated[field] = val;
+    }
+
+    this._config = updated;
     this.requestUpdate();
 
     const cfg = { type: "custom:ha-dashboard-sidebar", ...this._config };
     if (cfg.mode === "horizontal") {
       delete cfg.align;
-      delete cfg.width;
     }
+
+    // Rimuovi height se vuoto anche da export finale
+    if (!cfg.height) delete cfg.height;
 
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: cfg },
@@ -65,6 +91,14 @@ class HaDashboardSidebarEditor extends LitElement {
   _row(i, key, val) {
     const ents = [...this._config.entities];
     ents[i] = { ...ents[i], [key]: val };
+    if (key === "type") {
+      const newType = val;
+      ents[i] = {
+        type: newType,
+        icon: ents[i].icon || "",
+        ...(newType === "custom_card" ? { card: ents[i].card || {} } : { entity: "" })
+      };
+    }
     this._push("entities", ents);
   }
 
@@ -125,7 +159,6 @@ class HaDashboardSidebarEditor extends LitElement {
     dialog.appendChild(okButton);
     document.body.appendChild(dialog);
   }
-
   render() {
     if (!this.hass) return html``;
 
@@ -156,9 +189,15 @@ class HaDashboardSidebarEditor extends LitElement {
       </div>
 
       <ha-textfield class="full" label="Width (in px)"
-        .value=${this._config.width}
-        ?hidden=${this._config.mode === "horizontal"}
-        @change=${e => this._push("width", e.target.value)}>
+        .value=${this._config.width?.replace("px", "") || ""}
+        @input=${e => this._widthRaw = e.target.value}
+        @blur=${() => this._push("width", this._widthRaw.trim())}>
+      </ha-textfield>
+
+      <ha-textfield class="full" label="Height (in px)"
+        .value=${this._config.height?.replace("px", "") || ""}
+        @input=${e => this._heightRaw = e.target.value}
+        @blur=${() => this._push("height", this._heightRaw.trim())}>
       </ha-textfield>
 
       ${this._config.entities.map((ent, i) => html`
@@ -190,16 +229,17 @@ class HaDashboardSidebarEditor extends LitElement {
           : html`
               <div class="field-label">Entity</div>
               <ha-selector class="full" .hass=${this.hass}
-                .selector=${{ entity: {} }}
+                .selector=${{ entity: { domain: [ent.type] } }}
                 .value=${ent.entity}
                 @value-changed=${e => this._row(i, "entity", e.detail.value)}>
-              </ha-selector>`
-        }
+              </ha-selector>`}
       `)}
 
       <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
     `;
   }
+
+
   static styles = css`
     :host{display:block;padding:16px;font-size:14px}
     .row{display:flex;gap:8px;margin:6px 0}
@@ -332,7 +372,6 @@ class HaDashboardSidebar extends LitElement {
   }
   _toggleExpandContent() {
     this._expandContent = !this._expandContent;
-    console.warn("EXPAND STATE", this._expandContent);
     this.requestUpdate();
   }
   updated(changedProps) {
@@ -473,7 +512,7 @@ class HaDashboardSidebar extends LitElement {
         @media (max-width: 640px) {
           .dashboard.horizontal {
             transform: scale(0.9) !important;
-            max-width: 110vw !important;
+            max-width: 100vw !important;
           }
         }
         .expand-button{
@@ -488,7 +527,7 @@ class HaDashboardSidebar extends LitElement {
           flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;
           scrollbar-width:none;-ms-overflow-style:none}
         .content::-webkit-scrollbar{width:0;height:0}
-        .toggle-area{position:absolute;inset:0;cursor:pointer;background:transparent;z-index:5}
+        .toggle-area{position:absolute;inset:0;cursor:pointer;background:transparent;z-index:1}
 
         .clock{
           font-size:2.25rem;font-weight:600;margin-bottom:8px;transition:.3s;
@@ -630,7 +669,7 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.horizontal .content::-webkit-scrollbar-thumb{background:var(--primary-color);border-radius:4px}
 
         /* header tweaks in horizontal */
-        .dashboard.horizontal .header{flex-direction:column;align-items:center;justify-content:center;border-bottom:none!important;border-right:1px solid var(--divider-color,rgba(255,255,255,.1))!important}
+        .dashboard.horizontal .header{flex-direction:column;align-items:center;justify-content:center;border-bottom:none!important;border-right:1px solid var(--divider-color,rgba(255,255,255,.1))!important;z-index:1}
         .dashboard.horizontal .clock{font-size:2rem;font-weight:700;margin-bottom:6px;color:var(--primary-text-color,#fff)}
         .dashboard.horizontal .title{font-size:1rem;margin-top:5px;text-align:center}
 
@@ -646,7 +685,8 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.horizontal:not(.collapsed)
           .card.light {
             width: 110px !important;
-            min-height: 100px;
+            min-height: 10px;
+            height: auto;
             max-height: none;
             flex-shrink: 0;
             display: flex;
@@ -655,13 +695,15 @@ class HaDashboardSidebar extends LitElement {
             align-items: center !important;
             padding: 12px;
             text-align: center;
+            margin-bottom: 10px;
         }
         .dashboard.horizontal:not(.collapsed)
           .card.switch,
         .dashboard.horizontal:not(.collapsed)
           .card.button {
+            height: auto;
             width: 110px !important;
-            min-height: 100px;
+            min-height: 80px;
             max-height: none;
             flex-shrink: 0;
             display: flex;
@@ -669,6 +711,7 @@ class HaDashboardSidebar extends LitElement {
             justify-content: center;
             align-items: center !important;
             padding: 12px;
+            margin-bottom: 10px;
             text-align: center;
         }
         .dashboard.horizontal:not(.collapsed)
@@ -779,7 +822,7 @@ class HaDashboardSidebar extends LitElement {
           cursor: pointer;
           box-shadow: 0 0 4px var(--primary-color);
           position: relative;
-          z-index: 2;
+          z-index: 1;
         }
 
         .slider::-moz-range-thumb {
@@ -790,7 +833,7 @@ class HaDashboardSidebar extends LitElement {
           cursor: pointer;
           box-shadow: 0 0 4px var(--primary-color);
           position: relative;
-          z-index: 2;
+          z-index: 1;
         }
         /* ---------- SLIDER CLIMATE STYLE FIX ----------------------------------- */
         input.slider::-webkit-slider-thumb {
@@ -2426,7 +2469,6 @@ class HaDashboardSidebar extends LitElement {
           </div>` : null}
       </div>
     `;
-
     const justify =
       align === 'left'  ? 'flex-start' :
       align === 'right' ? 'flex-end'   :
