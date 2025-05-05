@@ -128,6 +128,58 @@ entities:
           name: Forno
           type: button
 ```
+## Personalizzare le `custom_card`
+
+| Variabile                                                   | Descrizione                                                                 |
+|-------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `.dashboard:not(.collapsed) .custom-card-wrapper`           | Controlla larghezza, altezza o qualsiasi stile di tutte le `custom_card` contemporaneamente. Deve essere usata con `!important`. |
+| `:host`                                                     | Controlla larghezza, altezza o qualsiasi stile di **una singola card**. Deve essere usata con `!important`. |
+
+### Esempio per controllare **una singola** `custom_card`
+
+```
+type: custom:ha-dashboard-sidebar
+title: Benvenuto, {{ user }}
+mode: horizontal
+entities:
+  - type: custom_card
+    icon: mdi:window-maximize
+    card:
+      type: custom:mushroom-entity-card
+      entity: climate.aria_condizionata_sala
+      fill_container: true
+      name: AC Sala
+      layout: vertical
+    card_mod:
+      style: |
+        :host {
+          width: 100px !important;
+          height: 100px !important;
+        }
+```
+
+### Esempio per controllare **tutte** le `custom_card`
+
+```
+type: custom:ha-dashboard-sidebar
+title: Benvenuto, {{ user }}
+mode: horizontal
+entities:
+  - type: custom_card
+    icon: mdi:window-maximize
+    card:
+      type: custom:mushroom-entity-card
+      entity: climate.aria_condizionata_sala
+      fill_container: true
+      name: AC Sala
+      layout: vertical
+card_mod:
+  style: |
+    .dashboard:not(.collapsed) .custom-card-wrapper {
+      width: 150px !important;
+      height: 150px !important;
+    }
+```
 
 ## 🧠 Comportamenti avanzati
 
