@@ -37,7 +37,7 @@ At this point, the card will be available for use in your dashboard.
 ```yaml
 type: custom:ha-dashboard-sidebar
 title: Welcome, {{ user }}
-mode: horizontal       # Default "vertical" NOTE: HORIZONTAL TO BE FIXED   
+mode: horizontal       # Default "vertical" 
 align: center          # Default left, choose "right" or "left" if you want to align on the left or right side
 width: 250px
 height: 500px          # control height
@@ -53,7 +53,7 @@ entities:
 |---------------|-----------|---------------------------------------------------------------------------|
 | `type`        | string    | Always `custom:ha-dashboard-sidebar`                                      |
 | `title`       | string    | Header title (can include `{{ user }}`)                                   |
-| `mode`        | string    | `vertical` or `horizontal` **HORIZONTAL TO BE FIXED                                               |
+| `mode`        | string    | `vertical` or `horizontal`                                              |
 | `align`       | string    | Sidebar alignment: `left` or `right`                                      |
 | `collapsed`   | boolean   | If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both   |
 | `entities`    | list      | List of entities (see supported types below)                              |
