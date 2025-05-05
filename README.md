@@ -133,6 +133,57 @@ entities:
           type: button
 ```
 
+
+## Customize custom_cards
+| Variable                            | Description                                              |
+|-------------------------------------|----------------------------------------------------------|
+| `.dashboard:not(.collapsed) .custom-card-wrapper`          | control width and height or whatever you want of all `custom_card` in a shot, must be used with `!important` |
+| `:host` | control width and height or whatever you want, of a single card, must be used with `!important` |
+
+Example for control a single `custom_card`
+
+```
+type: custom:ha-dashboard-sidebar
+title: Welcome, {{ user }}
+mode: horizontal
+entities:
+  - type: custom_card
+    icon: mdi:window-maximize
+    card:
+      type: custom:mushroom-entity-card
+      entity: climate.aria_condizionata_sala
+      fill_container: true
+      name: AC Sala
+      layout: vertical
+    card_mod:
+      style: |
+        :host {
+          width: 100px !important;
+          height: 100px !important;
+        }
+```
+Example for control all `custom_card`:
+```
+type: custom:ha-dashboard-sidebar
+title: Welcome, {{ user }}
+mode: horizontal
+entities:
+  - type: custom_card
+    icon: mdi:window-maximize
+    card:
+      type: custom:mushroom-entity-card
+      entity: climate.aria_condizionata_sala
+      fill_container: true
+      name: AC Sala
+      layout: vertical
+card_mod:
+  style: |
+    .dashboard:not(.collapsed) .custom-card-wrapper {
+      width: 150px !important;
+      height 150px !importamt;
+    }
+```
+
 ## 🧠 Advanced behaviors
 
 | Feature                 | Description                                                              |
