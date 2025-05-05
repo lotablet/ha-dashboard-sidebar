@@ -155,12 +155,12 @@ entities:
       fill_container: true
       name: AC Sala
       layout: vertical
-    card_mod:
-      style: |
-        :host {
-          width: 100px !important;
-          height: 100px !important;
-        }
+      card_mod:
+        style: |
+          :host {
+            width: 100px !important;
+            height: 100px !important;
+          }
 ```
 Example for control all `custom_card`:
 ```
