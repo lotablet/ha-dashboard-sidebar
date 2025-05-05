@@ -139,7 +139,7 @@ entities:
 
 ```
 type: custom:ha-dashboard-sidebar
-title: Benvenuto, {{ user }}
+title: Welcome, {{ user }}
 mode: horizontal
 entities:
   - type: custom_card
@@ -150,12 +150,12 @@ entities:
       fill_container: true
       name: AC Sala
       layout: vertical
-    card_mod:
-      style: |
-        :host {
-          width: 100px !important;
-          height: 100px !important;
-        }
+      card_mod:
+        style: |
+          :host {
+            width: 100px !important;
+            height: 100px !important;
+          }
 ```
 
 ### Esempio per controllare **tutte** le `custom_card`
