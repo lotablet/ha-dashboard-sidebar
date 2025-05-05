@@ -190,7 +190,7 @@ card_mod:
 |-------------------------|--------------------------------------------------------------------------|
 | `collapsed` per entity  | Each entity can be shown only when the sidebar is collapsed or expanded, If `true`, shows entity only in collapsed mode, `false` = only expanded. If not specified, both  |
 | `tracker_entity`        | Used with `person` to display live location on map                      |
-| `custom_card.card`      | Can contain any nested Lovelace card                                    |
+| `custom_card`      | Can contain any nested Lovelace card                                    |
 | `style:`                | Fully compatible with `card-mod` styles                                |
 | `title` dynamic         | You can use `{{ user }}` to show logged-in username                     |
 
