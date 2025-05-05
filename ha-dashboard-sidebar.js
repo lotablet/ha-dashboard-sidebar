@@ -1,138 +1,205 @@
-//<!-- Card developed by LoTablet - 2025 -->
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
 import { loadHaComponents, DEFAULT_HA_COMPONENTS } from
-        "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
+  "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
+
 loadHaComponents([
   ...DEFAULT_HA_COMPONENTS,
+  "ha-icon",
   "ha-icon-picker",
-  "hui-card-picker",
   "ha-dialog"
-]).catch(()=>/* niente panico se già caricati */{});
-/* Dashboard‑Sidebar editor – compact selectors + Card N label + delete */
+]).catch(() => {});
+
 import { LitElement, html, css } from "https://unpkg.com/lit@2.8.0/index.js?module";
 
 class HaDashboardSidebarEditor extends LitElement {
-  static properties = { hass:{type:Object}, _config:{type:Object} };
+  static properties = {
+    hass: { type: Object },
+    _config: { type: Object },
+    _pickerOpenIndex: { state: true }
+  };
 
-  constructor(){
+  constructor() {
     super();
-    this._config = { title:"", width:"", mode:"vertical", align:"left", entities:[] };
+    this._config = {
+      title: "",
+      width: "",
+      mode: "vertical",
+      align: "left",
+      entities: []
+    };
+    this._pickerOpenIndex = null;
   }
 
-  /* ------------- HA editor API ------------- */
-  setConfig(cfg){
+  setConfig(cfg) {
     this._config = {
-      type : "custom:ha-dashboard-sidebar",
-      title: cfg?.title  ?? "",
-      width: cfg?.width  ?? "",
-      mode : cfg?.mode   ?? "vertical",
-      align: cfg?.align  ?? "left",
+      type: "custom:ha-dashboard-sidebar",
+      title: cfg?.title ?? "",
+      width: cfg?.width ?? "",
+      mode: cfg?.mode ?? "vertical",
+      align: cfg?.align ?? "left",
       entities: Array.isArray(cfg?.entities) ? cfg.entities : [],
     };
   }
-  getConfig(){ return this._config; }
 
-  /* ------------- helpers ------------- */
-  _push(field,val){
+  getConfig() {
+    return this._config;
+  }
+
+  _push(field, val) {
     this._config = { ...this._config, [field]: val };
-    this.dispatchEvent(new CustomEvent("config-changed",{
-      detail:{ config:{ type:"custom:ha-dashboard-sidebar", ...this._config } },
-      bubbles:true, composed:true }));
     this.requestUpdate();
-  }
-  _row(idx,key,val){
-    const ents=[...this._config.entities];
-    ents[idx] = { ...ents[idx], [key]: val };
-    this._push("entities",ents);
-  }
-  _add(){ this._push("entities",[...this._config.entities,{ type:"sensor",entity:"" }]); }
-  _del(idx){ const ents=[...this._config.entities]; ents.splice(idx,1); this._push("entities",ents); }
 
-  _openYamlEditor(){
-    /* opens the built‑in YAML view of card picker dialog */
-    const dialog = this.closest("ha-dialog") || document.querySelector("ha-dialog[open]");
-    dialog?.querySelector('mwc-button[slot="secondaryaction"], mwc-button[slot="secondaryAction"]')?.click();
+    const cfg = { type: "custom:ha-dashboard-sidebar", ...this._config };
+    if (cfg.mode === "horizontal") {
+      delete cfg.align;
+      delete cfg.width;
+    }
+
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: cfg },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
-  /* ------------- render ------------- */
-/* … inside HaDashboardSidebarEditor … */
+  _row(i, key, val) {
+    const ents = [...this._config.entities];
+    ents[i] = { ...ents[i], [key]: val };
+    this._push("entities", ents);
+  }
 
-/* ------------- render ------------- */
-  render(){
+  _add() {
+    const ents = [...this._config.entities, { type: "sensor", entity: "" }];
+    this._push("entities", ents);
+  }
+
+  _del(i) {
+    const ents = [...this._config.entities];
+    ents.splice(i, 1);
+    this._push("entities", ents);
+  }
+
+  _openCardPicker(index) {
+    const picker = document.createElement("hui-card-picker");
+    picker.hass = this.hass;
+
+    const deepQuery = (root, sel) => {
+      const direct = root.querySelector(sel);
+      if (direct) return direct;
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) {
+          const inside = deepQuery(el.shadowRoot, sel);
+          if (inside) return inside;
+        }
+      }
+      return null;
+    };
+
+    const editor = deepQuery(document.body, "hui-card-element-editor, ha-card-element-editor");
+
+    if (!editor?.lovelace) {
+      console.error("Still no Lovelace context 😖");
+      return;
+    }
+
+    picker.lovelace = editor.lovelace;
+    picker.value = this._config.entities[index]?.card || {};
+    picker.style = "display:block;width:auto;height:auto;align-items:center;justify-content:center";
+
+    const dialog = document.createElement("ha-dialog");
+    dialog.setAttribute("open", "");
+    dialog.setAttribute("scrimClickAction", "");
+    dialog.setAttribute("escapeKeyAction", "");
+    dialog.style.setProperty("--dialog-content-padding", "0");
+
+    const okButton = document.createElement("mwc-button");
+    okButton.innerText = "SORRY.... still on development 🥹";
+    okButton.slot = "primaryAction";
+    okButton.style = "margin: 8px";
+
+    okButton.addEventListener("click", () => {
+      document.body.removeChild(dialog);
+    });
+
+    dialog.appendChild(picker);
+    dialog.appendChild(okButton);
+    document.body.appendChild(dialog);
+  }
+
+  render() {
     if (!this.hass) return html``;
 
     const typeOpts = [
-      "sensor","person","weather","light","switch","fan","cover",
-      "climate","media_player","button","script","custom_card"
-    ].map(t => ({ value:t, label: t[0].toUpperCase() + t.slice(1) }));
+      "sensor", "person", "weather", "light", "switch", "fan", "cover",
+      "climate", "media_player", "button", "script", "custom_card"
+    ].map(t => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }));
 
     return html`
-      <!-- Title -->
       <ha-textfield class="full" label="Sidebar title"
         .value=${this._config.title}
-        @input=${e=>this._push("title",e.target.value)}>
+        @input=${e => this._push("title", e.target.value)}>
       </ha-textfield>
 
-      <!-- Mode + Align – now two neat selects in ONE row -->
       <div class="row">
         <ha-selector class="sel small" .hass=${this.hass}
-          .selector=${{select:{options:["Vertical","Horizontal"].map(l=>({value:l.toLowerCase(),label:l}))}}}
+          .selector=${{ select: { options: ["Vertical", "Horizontal"].map(l => ({ value: l.toLowerCase(), label: l })) } }}
           .value=${this._config.mode}
-          @value-changed=${e=>this._push("mode",e.detail.value)}>
+          @value-changed=${e => this._push("mode", e.detail.value)}>
         </ha-selector>
 
         <ha-selector class="sel small" .hass=${this.hass}
-          .selector=${{select:{options:["Left","Right","None"].map(l=>({value:l.toLowerCase(),label:l}))}}}
+          .selector=${{ select: { options: ["Left", "Right", "None"].map(l => ({ value: l.toLowerCase(), label: l })) } }}
           .value=${this._config.align}
-          ?hidden=${this._config.mode==="horizontal"}
-          @value-changed=${e=>this._push("align",e.detail.value)}>
+          ?hidden=${this._config.mode === "horizontal"}
+          @value-changed=${e => this._push("align", e.detail.value)}>
         </ha-selector>
       </div>
 
-      <!-- Width -->
-      <ha-textfield class="full" label="Width (e.g. 250px or 25%)"
+      <ha-textfield class="full" label="Width (in px)"
         .value=${this._config.width}
-        @change=${e=>this._push("width",e.target.value)}>
+        ?hidden=${this._config.mode === "horizontal"}
+        @change=${e => this._push("width", e.target.value)}>
       </ha-textfield>
 
-      <!-- Cards list -->
-      ${this._config.entities.map((ent,i)=>html`
+      ${this._config.entities.map((ent, i) => html`
         <div class="divider">
-          <b>Card ${i+1}</b><span></span>
-          <mwc-icon-button class="delete" icon="mdi:close"
-            @click=${()=>this._del(i)} title="Remove"></mwc-icon-button>
+          <b>Card ${i + 1}</b><span></span>
+          <ha-icon icon="mdi:close-circle" class="delete" @click=${() => this._del(i)} title="Remove"></ha-icon>
         </div>
 
-        <!-- Type + Icon -->
-        <div class="row">
-          <ha-selector      class="sel small" .hass=${this.hass}
-            .selector=${{select:{options:typeOpts}}}
+        <div class="column">
+          <div class="field-label">Type</div>
+          <ha-selector class="sel small" .hass=${this.hass}
+            .selector=${{ select: { options: typeOpts } }}
             .value=${ent.type || "sensor"}
-            @value-changed=${e=>this._row(i,"type",e.detail.value)}>
+            @value-changed=${e => this._row(i, "type", e.detail.value)}>
           </ha-selector>
 
-          <ha-icon-picker   class="sel small" .hass=${this.hass}
+          <div class="field-label">Icon</div>
+          <ha-icon-picker class="sel icon-cell" .hass=${this.hass}
             .value=${ent.icon || ""}
-            @value-changed=${e=>this._row(i,"icon",e.detail.value)}>
+            @value-changed=${e => this._row(i, "icon", e.detail.value)}>
           </ha-icon-picker>
         </div>
 
-        <!-- Entity OR YAML -->
-        ${ent.type==="custom_card"
-          ? html`<mwc-button class="yaml" @click=${this._openYamlEditor}>Go YAML</mwc-button>`
+        ${ent.type === "custom_card"
+          ? html`
+              <mwc-button class="yaml" @click=${() => this._openCardPicker(i)}>
+                Select card
+              </mwc-button>`
           : html`
-            <ha-selector class="full" .hass=${this.hass}
-              .selector=${{entity:{}}}
-              .value=${ent.entity}
-              @value-changed=${e=>this._row(i,"entity",e.detail.value)}>
-            </ha-selector>`}
+              <div class="field-label">Entity</div>
+              <ha-selector class="full" .hass=${this.hass}
+                .selector=${{ entity: {} }}
+                .value=${ent.entity}
+                @value-changed=${e => this._row(i, "entity", e.detail.value)}>
+              </ha-selector>`
+        }
       `)}
 
       <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
     `;
   }
-
-  /* ------------- styles ------------- */
   static styles = css`
     :host{display:block;padding:16px;font-size:14px}
     .row{display:flex;gap:8px;margin:6px 0}
@@ -144,12 +211,26 @@ class HaDashboardSidebarEditor extends LitElement {
       color:var(--secondary-text-color);
     }
     .divider span{flex:1;height:1px;background:var(--divider-color,rgba(255,255,255,0.15));}
-    .delete{--mdc-icon-size:18px;color:var(--secondary-text-color);}
     .yaml{width:100%;margin-top:4px}
     .add{margin-top:12px}
+    .delete {
+      cursor: pointer;
+      --mdc-icon-size: 20px;
+      color: var(--primary-text-color);
+      transition: 0.2s ease;
+    }
+    .delete:hover {
+      color: var(--primary-color);
+      transform: scale(1.2);
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: bold;
+      margin: 4px 0 2px;
+      color: var(--secondary-text-color);
+    }
   `;
 }
-
 customElements.define("ha-dashboard-sidebar-editor", HaDashboardSidebarEditor);
 
 class HaDashboardSidebar extends LitElement {
@@ -344,1387 +425,652 @@ class HaDashboardSidebar extends LitElement {
   }
   static get styles() {
     return css`
-      :host {
-        --sidebar-item-size: 56px;
-        display: block;
-        height: 100%;
-      }
-      :root {
-        --dashboard-width: 200px;
-        --state-icon-active-color: var(--primary-color);
-      }
-      ha-card {
-        height: 100%;
-      }
-      .custom-card-container {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-top: 16px;
-        font-size: 1.5rem;
-      }
-      .custom-card-wrapper {
-      	display: flex;
-      	flex-direction: column;
-      	align-items: start;
-      	justify-content: center;
-      	width: 100%;
-      	box-sizing: border-box;
-        font-size: 1.5rem;
-      }
-
-      .custom-card-wrapper.horizontal.collapsed {
-      	width: 56px;
-      	height: 56px;
-        font-size: 1.5rem;
-      }
-
-      .custom-card-wrapper.vertical.collapsed {
-      	width: 56px;
-      	height: 56px;
-        font-size: 1.5rem;
-      }
-
-      .header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 24px 20px;
-        background: var(--card-background-color, #1a1b1e);
-        border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-        position: relative;
-        flex-shrink: 0;
-        flex: 0 0 auto;
-        z-index: 1;
-      }
-      .expand-button {
-        flex: 0 0 auto;
-        text-align: center;
-        padding: 10px;
-        cursor: pointer;
-        font-weight: bold;
-        font-size: 15px;
-        color: var(--primary-text-color);
-        background: var(--card-background-color, #1a1b1e);
-        border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-        line-height: 1;
-        transform: scaleX(2.5) scaleY(0.8);
-      }
-      .expand-button:hover {
-        background: var(--primary-color, #7289da);
-        color: var(--card-background-color, #1a1b1e);
-      }
-      .content {
-        flex: 1 1 auto;
-        overflow-y: auto;
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
-
-      .content::-webkit-scrollbar {
-        width: 0px;
-        height: 0px;
-      }
-
-      .content::-webkit-scrollbar-thumb {
-        background: transparent;
-      }
-
-      .toggle-area {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        cursor: pointer;
-        background: transparent;
-        z-index: 5;
-      }
-
-      .clock {
-        font-size: 2.25rem;
-        font-weight: 600;
-        margin-bottom: 8px;
-        transition: all 0.3s;
-        color: var(--primary-text-color, #ffffff);
-        letter-spacing: -1px;
-        z-index: 1;
-      }
-
-      .collapsed .clock {
-        font-size: 1.5rem;
-        letter-spacing: 0;
-      }
-      .collapsed-clickable-box {
-        cursor: pointer;
-      }
-      .title {
-        font-size: 1rem;
-        font-weight: 500;
-        opacity: 0.7;
-        transition: all 0.3s;
-        color: var(--primary-text-color, #ffffff);
-        margin-bottom: 0;
-      }
-
-      .collapsed .title {
-        opacity: 0;
-        height: 0;
-        margin: 0;
-      }
-      .card {
-        border-radius: var(--ha-card-border-radius, 24px);
-        padding: 20px;
-        transition: all 0.3s;
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
-        position: relative;
-        overflow: hidden;
-        cursor: pointer;
-        backdrop-filter: blur(5px);
-        color: var(--primary-text-color, #ffffff);
-        flex-shrink: 0;
-      }
-
-      .collapsed .card {
-        padding: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        aspect-ratio: 1;
-      }
-
-      .card:hover {
-        border-color: var(--primary-color);
-        transform: translateY(-2px);
-      }
-
-      .value {
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 8px;
-        color: var(--primary-text-color, #ffffff);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .label {
-        font-size: 0.875rem;
-        opacity: 0.7;
-        color: var(--primary-text-color, #ffffff);
-        transition: all 0.3s;
-      }
-
-      .collapsed .label,
-      .collapsed .value {
-        display: none;
-      }
-
-      .icon {
-        font-size: 24px;
-        color: var(--primary-text-color, #ffffff);
-        opacity: 0.9;
-        display: none;
-        transition: all 0.3s;
-      }
-
-      .collapsed .icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .button-row,
-      .media-controls,
-      .cover-actions {
-        display: flex;
-        gap: clamp(4px, 1vw, 6px);
-        justify-content: center;
-        margin-top: 8px;
-      }
-      .sensor:hover {
-        background: transparent;
-        border-color: var(--primary-color);
-      }
-      .sensor {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px;
-        height: auto;
-        border-radius: 16px;
-        background: var(--card-background-color, rgba(255, 255, 255, 0.03));
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
-        cursor: pointer;
-        transition: all 0.3s;
-        color: var(--primary-text-color, #ffffff);
-        flex-shrink: 0;
-      }
-      .light:hover {
-        background: transparent;
-        border-color: var(--primary-color);
-      }
-      .light {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px;
-        border-radius: 16px;
-        background: var(--card-background-color, rgba(255, 255, 255, 0.03));
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
-        cursor: pointer;
-        transition: all 0.3s;
-        color: var(--primary-text-color, #ffffff);
-        flex-shrink: 0;
-      }
-    	/* Mini-popup: dimensioni “auto-adattive” al contenuto */
-      .mini-popup {
-        position: absolute;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -90%) !important;
-        background: var(--card-background-color);
-        border-radius: 16px;
-        box-shadow: none;
-        z-index: 9999;
-        padding: 0;
-        overflow: visible !important;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        animation: popup-appear 0.3s ease forwards;
-        min-width: 100px;  /* Imposta una larghezza minima per evitare che diventi troppo piccolo */
-        max-width: 90vw;   /* Limita la larghezza massima al 90% della finestra */
-        max-height: 80vh;  /* Limita l'altezza massima al 80% della finestra */
-        width: auto;  /* Permette la larghezza dinamica in base al contenuto */
-        height: auto; /* Permette l'altezza dinamica in base al contenuto */
-      }
-
-      @keyframes popup-appear {
-        0% {
-          opacity: 0;
-          transform: scale(0.8, 0.4) translateY(-50px);
+        :host{--sidebar-item-size:56px;display:block;height:100%}
+        :root{
+          --dashboard-width:200px;
+          --state-icon-active-color:var(--primary-color);
         }
 
-        100% {
-          transform: scale(1)  translateY(0);
-        }
-      }
-      .mini-popup.closing {
-        animation: dock-minimize 200ms ease forwards;
-        pointer-events: none;
-        transform-origin: left center;
-        }
-        @keyframes dock-minimize {
-          0% {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
+        /* ---------- ELEMENTI BASE --------------------------------------------------- */
+        ha-card{height:100%}
 
-          100% {
-            opacity: 0;
-            transform: scale(0.8, 0.4) translateY(-50px);
+        .custom-card-container{
+          display:flex;flex-direction:column;gap:12px;margin-top:16px;font-size:1.5rem}
+        .custom-card-wrapper{
+          display:flex;flex-direction:column;align-items:start;justify-content:center;
+          width:100%;box-sizing:border-box;font-size:1.5rem}
+        .custom-card-wrapper:is(.horizontal,.vertical).collapsed{
+          width:56px;height:56px;font-size:1.5rem}
+
+        /* ---------- HEADER & CLOCK -------------------------------------------------- */
+        .header{
+          display:flex;flex-direction:column;border-radius:16px;align-items:center;justify-content:center;
+          padding:24px 20px;background:var(--card-background-color,#1a1b1e);
+          border-bottom:1px solid var(--divider-color,rgba(255,255,255,.1));flex-shrink:0;z-index:1}
+        @media (max-width: 640px) {
+          .header {
+            padding: 12px 10px;
+            border-radius: 8px;
+            width: auto;
+            border: none !important;
           }
         }
-      .mini-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        /* sfondo trasparente */
-        background: rgba(0,0,0,0);
-        z-index: 9998;
-      }
-      .mini-popup .card.custom-card,
-      .mini-popup .custom-card-wrapper {
-        max-width: 100%;  /* Assicura che la card non ecceda la larghezza del popup */
-        height: auto;     /* La card si adatta automaticamente alla sua altezza */
-      }
-    	.mini-popup .slider-container,
-    	.mini-popup .button-row,
-    	.mini-popup .media-controls,
-    	.mini-popup .cover-actions {
-        width: 100% !important;
-        height: 100% !important;
-    		overflow: hidden;
-    	}
-
-    	/* La “freccia” del popup (puntina) */
-    	.mini-popup::after {
-    		content: "";
-    		position: absolute;
-    		top: 12px;
-    		left: -8px;
-    		border-width: 8px;
-    		border-style: solid;
-    		border-color: transparent var(--card-background-color, #1a1b1e) transparent transparent;
-    	}
-      .mini-popup .mini-close:hover {
-        color: var(--primary-color);
-      }
-      .mini-popup .mini-close {
-        position: absolute;   /* posizione assoluta all’interno di .mini-popup */
-        top: 8px;             /* distanza dal bordo superiore */
-        right: 8px;           /* distanza dal bordo destro */
-        font-size: 1.2em;     /* dimensione della “×” */
-        color: var(--primary-text-color); /* colore in tema */
-        cursor: pointer;      /* mano al hover */
-        z-index: 10;          /* sopra il contenuto */
-        user-select: none;    /* eviti selezione accidentale del simbolo */
-      }
-      .collapsed .person-info {
-        display: none;
-      }
-
-      .person-wrapper {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-
-      .avatar-container {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .person-image {
-        width: 50px;
-        height: 50px;
-        border-radius: 16px;
-        object-fit: cover;
-        margin-right: 12px;
-        border: 2px solid var(--primary-color, #7289da);
-        transition: filter 0.3s ease, opacity 0.3s ease;
-      }
-      .person-image.color {
-        filter: none;
-        opacity: 1;
-      }
-
-      .person-image.grayscale {
-        filter: grayscale(100%) brightness(0.7);
-        opacity: 0.7;
-      }
-      .person-info {
-        display: flex;
-        flex-direction: column;
-      }
-
-      .person-info .name {
-        font-weight: 600;
-        font-size: 1rem;
-      }
-
-      .person-info .status {
-        font-size: 0.875rem;
-        opacity: 0.7;
-      }
-
-      .presence-badge {
-        position: absolute;
-        top: -2px;
-        right: -2px;
-        width: 15px;
-        height: 15px;
-        border-radius: 50%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background-color: white;
-        border: 2px solid;
-      }
-
-      .presence-badge ha-icon {
-        --mdc-icon-size: 10px;
-        color: #000;
-      }
-
-      .presence-badge.home {
-        border-color: #4caf50;
-      }
-
-      .presence-badge.away {
-        border-color: #f44336;
-      }
-      .sensor-state {
-        width: 100%;
-        height: 100%;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        font-size: 0.8rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 0 !important;
-        padding: 0 !important;
-      }
-
-      .collapsed .sensor-state {
-        aspect-ratio: 1 / 1;
-        width: 36px;
-        height: 36px;
-        padding: 0 !important;
-        border-radius: 0 !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .sensor-state.active {
-        background: var(--primary-color, #7289da);
-        color: var(--text-primary-color, white);
-        box-shadow: 0 2px 8px rgba(var(--rgb-primary-color, 114, 137, 218), 0.3);
-      }
-
-      .weather-icon {
-        font-size: 2rem;
-        margin-bottom: 8px;
-        transition: all 0.3s;
-      }
-
-      .collapsed .weather-icon {
-        font-size: 1.5rem;
-        margin-bottom: 0;
-      }
-
-      .weather-icon.twinkle {
-        animation: twinkle 2s ease-in-out infinite;
-      }
-
-      .weather-icon.float {
-        animation: float 3s ease-in-out infinite;
-      }
-
-      .weather-icon.pulse {
-        animation: pulse 2s ease-in-out infinite;
-      }
-
-      .weather-icon.bounce {
-        animation: bounce 1s ease-in-out infinite;
-      }
-
-      .weather-icon.flash {
-        animation: flash 2s ease-in-out infinite;
-      }
-
-      .weather-icon.storm {
-        animation: storm 3s ease-in-out infinite;
-      }
-
-      .weather-icon.rain {
-        animation: rain 1s ease-in-out infinite;
-      }
-
-      .weather-icon.snow {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1em;
-        height: 1em;
-        line-height: 0;
-        animation: snow-spin 3s linear infinite;
-        transform-origin: 50% 50%;
-      }
-      @keyframes snow-spin {
-        from { transform: rotate(0deg); }
-        to   { transform: rotate(360deg); }
-      }
-      .weather-icon.shake {
-        animation: shake 1s ease-in-out infinite;
-      }
-
-      .modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-      }
-
-      .modal-content {
-        background: var(--card-background-color, #1a1b1e);
-        border-radius: var(--ha-card-border-radius, 16px);
-        padding: 24px;
-        width: 100%;
-        max-width: 50vw;
-        max-height: 80vh;
-        object-fit: cover;
-        overflow-y: auto;
-        position: relative;
-      }
-
-      @media (max-width: 640px) {
-        .modal-content {
-          max-width: 90vw !important;
+        @media (max-width: 640px) {
+          .title {
+            display: none;
+          }
         }
-      }
-
-      /* Tablet / smartphone grandi */
-      @media (max-width: 720px) {
-        .modal-content {
-          max-width: 50vw;
+        @media (max-width: 640px) {
+          .dashboard.horizontal .clock {
+            font-size: 1.2em !important;
+            transform: scaleX(1.4);
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            letter-spacing: -6px;
+            box-shadow: var(--primary-text-color);
+          }
         }
-      }
-
-      /* Desktop larghi */
-      @media (min-width: 1280px) {
-        .modal-content {
-          max-width: 30vw !important;
+        @media (max-width: 640px) {
+          .dashboard.horizontal {
+            transform: scale(0.9) !important;
+            max-width: 110vw !important;
+          }
         }
-      }
-      .modal-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-
-      .modal-close {
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        background: none;
-        border: none;
-        color: var(--primary-text-color, #ffffff);
-        font-size: 24px;
-        cursor: pointer;
-        padding: 4px;
-      }
-
-      .modal-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin: 0;
-        color: var(--primary-text-color, #ffffff);
-      }
-
-
-      .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        margin-right: 8px;
-      }
-
-      .status-indicator.home {
-        background: var(--state-icon-active-color, #4caf50);
-      }
-
-      .status-indicator.away {
-        background: var(--warning-color, #ff9800);
-      }
-
-      .map-container {
-        width: 100%;
-        height: 400px;
-        border-radius: 8px;
-        overflow: hidden;
-        margin-top: 16px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      .map-container ha-map {
-        width: 100% !important;
-        height: 100% !important;
-        display: block;
-      }
-      .button-row {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .control-button {
-        background: var(--primary-color);
-        color: var(--text-primary-color);
-        border: none;
-        border-radius: 0.6em;
-        width: 2.4em;
-        height: 2.4em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-size: 1.2em;
-      }
-      .control-button:hover {
-        filter: brightness(1.1);
-      }
-
-      .control-button:active {
-        transform: scale(0.98);
-      }
-
-      .slider-container {
-        width: 100%;
-        margin: 6px auto 8px;
-        overflow: hidden;
-        padding-inline: 8px;
-      }
-
-      .slider::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .slider::-webkit-slider-thumb:hover {
-        transform: scale(1.2);
-      }
-
-      .input-field {
-        width: 100%;
-        background: var(--secondary-background-color);
-        border: 1px solid var(--divider-color);
-        border-radius: 4px;
-        padding: 8px;
-        color: var(--primary-text-color);
-        margin-top: 8px;
-      }
-
-      .toggle-switch {
-        position: relative;
-        display: inline-block;
-        width: 40px;
-        height: 24px;
-      }
-
-      .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-      }
-
-      .toggle-slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: var(--secondary-background-color);
-        transition: .4s;
-        border-radius: 24px;
-      }
-      .icon ha-icon {
-        color: var(--primary-color);
-        --mdc-icon-size: 20px;
-      }
-      .toggle-slider:before {
-        position: absolute;
-        content: "";
-        height: 16px;
-        width: 16px;
-        left: 4px;
-        bottom: 4px;
-        background-color: white;
-        transition: .4s;
-        border-radius: 50%;
-      }
-
-      input:checked + .toggle-slider {
-        background-color: var(--primary-color);
-      }
-
-      input:checked + .toggle-slider:before {
-        transform: translateX(16px);
-      }
-
-      .climate-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-top: 8px;
-      }
-
-      .media-controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .sensor-value-wrapper.collapsed-centered {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-      }
-
-      .sensor-value-wrapper.collapsed-centered ha-icon {
-        font-size: 24px;
-      }
-
-      .sensor-value-text {
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: var(--primary-text-color, #fff);
-      }
-
-      .sensor-value-wrapper.expanded-right {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        justify-content: center;
-        gap: 4px;
-        width: 100%;
-      }
-
-      .sensor-value-wrapper.expanded-right ha-icon {
-        font-size: 20px;
-      }
-
-      .sensor-number-text {
-        font-size: 1rem;
-        font-weight: 600;
-        color: var(--primary-text-color, #ffffff);
-      }
-      ha-icon.on {
-        color: var(--state-icon-active-color, var(--primary-color, #fbc02d));
-      }
-      ha-icon:not(.on) {
-        color: var(--disabled-text-color, #666666);  /* grigio neutro */
-        opacity: 0.75;                              /* un filo più tenue */
-      }
-      .sensor-value-wrapper ha-icon:not(.on),
-      .sensor-value-wrapper .sensor-value-text {
-        color: var(--disabled-text-color, #666666);
-      }
-
-      /* === Button card in colonna ======================================== */
-
-      .card.button {
-        display: flex;
-        flex-direction: column;   /* titolo -> bottone azione */
-        align-items: center;      /* centro orizzontale */
-        justify-content: center;  /* centro verticale nel box */
-        gap: 10px;
-      }
-
-      /* Titolo centrato e full-width per avere wrap uniforme */
-      .card.button .value {
-        text-align: center;
-        width: 100%;
-        margin: 0;                /* niente offset laterale */
-      }
-
-      /* Pulsante di controllo centrato sotto il titolo */
-      .card.button .control-button {
-        align-self: center;
-      }
-      .light-header,
-      .switch-header,
-      .fan-header,
-      .cover-header,
-      .climate-header,
-      .media-header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;                 /* spazio tra titolo & toggle */
-      }
-
-      /* Toggle centrato (rimuove l’offset laterale) */
-      .light-header .toggle-switch,
-      .switch-header .toggle-switch,
-      .fan-header   .toggle-switch,
-      .cover-header .toggle-switch {
-        margin: 0;
-        align-self: center;
-      }
-      .card.light,
-      .card.switch,
-      .card.button,
-      .card.fan,
-      .card.cover,
-      .card.climate,
-      .card.media-player {
-        padding: 16px 10%;
-        height: 100%;
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-      }
-
-      .slider {
-        width: 100%;
-        -webkit-appearance: none;
-        appearance: none;
-        height: clamp(3px, 0.6vh, 5px);
-        border-radius: 3px;
-        background: var(--secondary-background-color);
-        outline: none;
-      }
-
-      .slider::-webkit-slider-thumb,
-      .slider::-moz-range-thumb {
-        width: clamp(12px, 2.4em, 18px);
-        height: clamp(12px, 2.4em, 18px);
-      }
-
-      .control-button ha-icon {
-        --mdc-icon-size: 1.2em;
-      }
-
-      50% {
-        transform: translate(0, -2px);
-      }
-
-      75% {
-        transform: translateX(2px);
-      }
-
-      100% {
-        transform: translateY(-3px);
-      }
-      @keyframes twinkle {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(0.9); }
-      }
-
-      @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-5px); }
-      }
-
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-      }
-
-      @keyframes bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-8px); }
-      }
-
-      @keyframes flash {
-        0%, 49%, 51%, 100% { opacity: 1; }
-        50% { opacity: 0; }
-      }
-
-      @keyframes storm {
-        0%, 100% { transform: translate(0, 0); }
-        25% { transform: translate(-2px, 2px); }
-        50% { transform: translate(0, -2px); }
-        75% { transform: translate(2px, 2px); }
-      }
-
-      @keyframes rain {
-        0% { transform: translateY(-3px); }
-        50% { transform: translateY(0); }
-        100% { transform: translateY(-3px); }
-      }
-
-      @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(-2px); }
-        75% { transform: translateX(2px); }
-      }
-
-      .dashboard.vertical:not(.collapsed) .card.light,
-      .dashboard.vertical:not(.collapsed) .card.switch,
-      .dashboard.vertical:not(.collapsed) .card.button {
-        width: 90%;
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        align-self: center;
-      }
-
-      /* Padding interno proporzionale alla larghezza card */
-      .dashboard.vertical:not(.collapsed) .card.cover,
-      .dashboard.vertical:not(.collapsed) .card.climate,
-      .dashboard.vertical:not(.collapsed) .card.media-player {
-        padding: 16px 10%;
-        height: 240px !important;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 16px;
-      }
-      .dashboard.vertical:not(.collapsed) .card.cover .cover-actions {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
-        width: 100% !important;
-      }
-      .dashboard.vertical:not(.collapsed) .card.cover .button-row {
-        display: flex;
-        flex-direction: row;
-        justify-content: center;
-        gap: 8px;
-      }
-      .dashboard.vertical:not(.collapsed) .card.fan {
-        padding: 16px 10%;
-        z-index: 10;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        height: 220px !important;
-        gap: 20px;
-      }
-      .dashboard {
-        background: var(--card-background-color, #1a1b1e);
-        border-radius: var(--ha-card-border-radius, 24px);
-        box-shadow: var(--ha-card-box-shadow, 0 8px 32px rgba(0, 0, 0, 0.25));
-        width: auto;
-        max-height: 80vh;
-        overflow: hidden;
-        position: relative;
-        backdrop-filter: blur(10px);
-        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-        display: flex;
-        flex-direction: column;
-        transition: all 0.5s ease, height 0.5s ease, width 0.5s ease;
-      }
-
-      /* COLLASSATA VERTICALE */
-      .dashboard.collapsed.vertical {
-        width: 90px !important;
-      }
-
-      .dashboard.expanded-content.vertical {
-        max-height: none;
-        height: auto;
-      }
-      .dashboard .content {
-        overflow-y: auto;
-        max-height: 100vh;
-        flex: 1 1 auto;
-      }
-      .dashboard.expanded-content.horizontal {
-        width: 100%;
-        height: auto;
-        max-height: 80vh;
-      }
-      .dashboard.vertical {
-        flex-direction: column;
-        width: var(--dashboard-width, 200px) !important;
-      }
-      /* Layout base ORIZZONTALE */
-      .dashboard.horizontal {
-        flex-direction: row;
-        width: 50%;
-        height: auto;
-        margin: 0 auto;
-        max-width: 100%;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        width: auto !important;
-        max-width: 90vw !important;
-        margin-inline: auto !important;
-        position: relative !important;
-      }
-      .dashboard.horizontal:not(.collapsed):not(.expanded-content) {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        width: auto !important;
-        max-width: calc(90vw - 16px) !important;
-        margin: 0 auto !important;
-        padding: 0 16px;
-        box-sizing: border-box;
-        position: relative !important;
-      }
-      .dashboard.horizontal .header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        border-bottom: none !important;
-      }
-
-      .dashboard.horizontal .content {
-        display: flex !important;
-        flex-direction: row;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        white-space: nowrap;
-        scroll-snap-type: x mandatory;
-        scroll-padding-inline: 16px; /* spazio all’inizio/fine per snap */
-        scrollbar-width: thin;
-        scrollbar-color: var(--primary-color) transparent;
-        gap: 12px;
-        padding: 12px 8px 16px 8px;
-        box-sizing: border-box;
-      }
-
-      .dashboard.horizontal .content > * {
-        scroll-snap-align: start;
-        flex-shrink: 0;
-      }
-
-      .dashboard.horizontal .content::after {
-        content: '';
-        flex: 0 0 16px; /* spazio finale per scroll completo */
-      }
-
-      .dashboard.horizontal:not(.collapsed) .custom-card-wrapper {
-        display: flex !important;
-        flex-direction: row !important;
-        overflow: visible !important;
-        max-width: unset !important;
-        width: auto !important;
-        flex-shrink: 0 !important;
-      }
-      .dashboard.horizontal .clock {
-      	font-size: 2rem;
-      	font-weight: 700;
-      	margin-bottom: 6px;
-      	color: var(--primary-text-color, #ffffff);
-      }
-
-      .dashboard.horizontal .title {
-      	font-size: 1rem;
-      	margin-top: 5px;
-      	text-align: center;
-      }
-      .dashboard.horizontal:not(.collapsed) .card.light,
-      .dashboard.horizontal:not(.collapsed) .card.switch,
-      .dashboard.horizontal:not(.collapsed) .card.button {
-        width: 100px !important;
-        min-height: 100px;
-        max-height: none;
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        padding: 12px;
-        text-align: center;
-      }
-      .dashboard.horizontal .card.button .value {
-        width: 100%;
-        display: flex;
-        justify-content: center;     /* centra orizzontalmente */
-        align-items: center;         /* centra verticalmente */
-        text-align: center;
-        margin: 0px auto !important;
-      }
-      .dashboard.horizontal .weather,
-      .dashboard.horizontal .sensor,
-      .dashboard.horizontal .person {
-        width: 100px;
-        height: 100px;
-        flex-shrink: 0;
-        scroll-snap-align: start;
-        flex-direction: column;
-        display: flex;
-        transform: scale(1);
-      }
-
-    	.dashboard.horizontal .card.custom-card .collapsed-clickable-box {
-    		width: 100%;
-    		height: 100%;
-    		display: flex;
-    		align-items: center;
-    		justify-content: center;
-    	}
-      .dashboard.horizontal .card.custom-card {
-        width: 100px;
-        flex-shrink: 0;
-        scroll-snap-align: start;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      /* Card larghezza */
-      .dashboard.horizontal .climate,
-      .dashboard.horizontal .cover,
-      .dashboard.horizontal .media-player,
-      .dashboard.horizontal .fan {
-        display: none;
-      }
-      .dashboard.horizontal.collapsed .card,
-      .dashboard.horizontal.collapsed .sensor,
-      .dashboard.horizontal.collapsed .light,
-      .dashboard.horizontal.collapsed .button,
-      .dashboard.horizontal.collapsed .person,
-      .dashboard.horizontal.collapsed .cover,
-      .dashboard.horizontal.collapsed .climate,
-      .dashboard.horizontal.collapsed .media-player,
-      .dashboard.horizontal.collapsed .fan {
-        padding: 0;
-        margin: 0 auto;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        scroll-snap-align: start;
-        display: flex;
-      }
-
-
-      .dashboard.horizontal.collapsed .person img.person-image {
-        width: 50px;
-        height: 50px;
-        margin: 0;
-        border-radius: 50%;
-        object-fit: cover;
-      }
-
-      .dashboard.horizontal.collapsed .person-info {
-        display: none !important;
-      }
-
-      .dashboard.horizontal .sensor-value-wrapper.expanded-right {
-        align-items: center !important; /* da flex-end → center */
-        justify-content: center;
-        text-align: center;
-      }
-      .dashboard.horizontal .sensor-number-text {
-        text-align: center;
-        width: 100%;
-      }
-
-      /* Scrollbar estetica */
-      .dashboard.horizontal .content::-webkit-scrollbar {
-        height: 6px;
-      }
-      .dashboard.horizontal .content::-webkit-scrollbar-thumb {
-        background: var(--primary-color);
-        border-radius: 4px;
-      }
-
-      /* Expand button */
-      .dashboard.horizontal .expand-button {
-        writing-mode: vertical-rl;
-        transform: rotate(180deg);
-      }
-      .dashboard:hover .toggle {
-        opacity: 1;
-      }
-      .person {
-        display: flex;
-        align-items: center;
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 16px;
-        padding: 14px 16px;
-        margin-bottom: 2px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
-        cursor: pointer;
-        color: var(--primary-text-color, #ffffff);
-        flex-shrink: 0;
-      }
-
-      .dashboard:not(.collapsed) .person:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: var(--primary-color);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-        transform: scale(1.05);
-      }
-      .dashboard.collapsed .person {
-        padding: 8px;
-        margin: 0 auto;
-        background: var(--card-background-color, rgba(255,255,255,0.03));
-        border-radius: 16px;
-        box-sizing: border-box;
-      }
-      .dashboard.collapsed .collapsed-clickable-box:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        border-color: var(--primary-color);
-        box-shadow: 1px 1px 3px var(--primary-color);
-        transform: scale(1.05);
-      }
-
-      .dashboard.collapsed .person-image {
-        width: 52px;
-        height: 52px;
-        border-radius: 16px;
-        margin: 0;
-      }
-      .dashboard.collapsed .sensor,
-      .dashboard.collapsed .weather,
-      .dashboard.collapsed .media-player,
-      .dashboard.collapsed .fan,
-      .dashboard.collapsed .cover,
-      .dashboard.collapsed .climate,
-      .dashboard.collapsed .button,
-      .dashboard.collapsed .custom-card,
-      .dashboard.collapsed .light,
-      .dashboard.collapsed .switch {
-        width: 56px;
-        height: 56px;
-        padding: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto;
-        box-sizing: border-box;
-      }
-      .dashboard.collapsed .card.button {
-        padding: 8px;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .dashboard.collapsed .card.button .value,
-      .dashboard.collapsed .card.button .control-button {
-        display: none;            /* solo l’icona */
-      }
-      .dashboard.horizontal.collapsed .card.custom-card {
-        width: var(--sidebar-item-size);
-        height: var(--sidebar-item-size);
-        padding: 0;
-        margin: 0 auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .mini-popup .fan {
-        width: 200px !important;
-        height: 200px !important;
-        flex-shrink: 0;
-      }
-      .mini-popup .cover {
-        width: 200px !important;
-        height: 200px !important;
-        flex-shrink: 0;
-      }
-      .mini-popup .media-player {
-        width: 200px !important;
-        height: 200px !important;
-        flex-shrink: 0;
-      }
-      .mini-popup .sensor {
-        width: 180px !important;
-        height: 180px !important;
-        flex-shrink: 0;
-      }
-      .mini-popup .card.light {
-        width: 260px;
-        padding: 16px;
-        padding-bottom: 32px;     /* spazio extra sotto per non tagliare lo slider */
-        box-sizing: border-box;
-        overflow: visible;        /* evita clipping */
-      }
-
-      .mini-popup .card.light .slider-container {
-        width: 100%;
-        margin: 10px 0;           /* più separazione verticale */
-      }
-
-      .mini-popup .card.light .slider-container:last-of-type {
-        margin-bottom: 10px;      /* ancora più spazio sotto l’ultimo slider */
-      }
-
-      .mini-popup .card.light .slider {
-        width: 100%;
-      }
-
-      .mini-popup .card.light .label {
-        font-size: 0.9rem;
-        margin: 8px 0;            /* un po’ più di spazio anche qui */
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .mini-popup .card.light .button-row {
-        justify-content: center;
-        margin-top: 12px;
-      }
-
-      .mini-popup .card.light .light-header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 14px;                /* aumenta leggermente il gap tra titolo e toggle */
-      }
-
-      .mini-popup .switch {
-        width: 100px !important;
-        height: 100px !important;
-        flex-shrink: 0;
-      }
-
-      .mini-popup .card.climate {
-        width: 300px;         /* fissa una larghezza confortevole */
-      }
-      .mini-popup .card.climate .button-row button {
-        width: 40px;
-        height: 40px;
-        font-size: 1.2rem;
-        margin: 0 4px;
-      }
-      .mini-popup .card.climate .slider-container {
-        width: 100%;
-      }
-      .mini-popup .card.climate .slider {
-        width: 100%;
-      }
-      .mini-popup .card.climate .label:last-of-type {
-        font-size: 0.9rem;
-        margin: 6px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        text-align: center;
-        width: 100%;
-        display: block;
-      }
-      /* Mantieni icona di chiusura ben visibile */
-      .mini-popup .mini-close {
-        font-size: 1.2rem;
-        top: 8px;
-        right: 8px;
-      }
-      .mini-popup .card {
-        background: var(--card-background-color);
-        border: 1px solid var(--divider-color);
-        box-shadow: var(--ha-card-box-shadow);
-        border-radius: var(--ha-card-border-radius);
-        padding: 12px;
-        overflow: visible !important;
-      }
-      /* ───────────────────────────────
-         Minipopup: flex‐wrap per custom‐card interne
-      ───────────────────────────────── */
-      .mini-popup .content {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 8px !important;
-        width: auto !important;
-        max-width: 90vw !important;
-      }
-      .mini-popup ha-card {
-        width: auto !important;
-      }
+        .expand-button{
+          flex:0 0 auto;text-align:center;padding:10px;cursor:pointer;
+          font:700 15px/1 var(--font-family);color:var(--primary-text-color);
+          background:var(--card-background-color,#1a1b1e);
+          border-top:1px solid var(--divider-color,rgba(255,255,255,.1))!important;
+          line-height:1;border-bottom-left-radius:16px;border-bottom-right-radius:16px}
+        .expand-button:hover{background:var(--primary-color,#7289da);color:var(--card-background-color,#1a1b1e)}
+
+        .content{
+          flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;
+          scrollbar-width:none;-ms-overflow-style:none}
+        .content::-webkit-scrollbar{width:0;height:0}
+        .toggle-area{position:absolute;inset:0;cursor:pointer;background:transparent;z-index:5}
+
+        .clock{
+          font-size:2.25rem;font-weight:600;margin-bottom:8px;transition:.3s;
+          color:var(--primary-text-color,#fff);letter-spacing:-1px;z-index:1}
+        .collapsed .clock{font-size:1.5rem;letter-spacing:0}
+
+        .title{font-size:1rem;font-weight:500;opacity:.7;transition:.3s;
+          color:var(--primary-text-color,#fff);margin:0}
+        .collapsed .title{opacity:0;height:0}
+
+        /* ---------- CARD BASE ------------------------------------------------------- */
+        .card{
+          border-radius:var(--ha-card-border-radius,24px);padding:20px;transition:.3s;
+          border:1px solid var(--divider-color,rgba(255,255,255,.05));position:relative;overflow:hidden;
+          cursor:pointer;backdrop-filter:blur(5px);color:var(--primary-text-color,#fff);flex-shrink:0
+        }
+        .collapsed .card{padding:12px;display:flex;align-items:center;justify-content:center;aspect-ratio:1}
+        .card:hover{border-color:var(--primary-color);transform:translateY(-2px)}
+
+        .value{font-size:1rem;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;color:var(--primary-text-color,#fff)}
+        .label{font-size:1.1rem;transition:.3s;color:var(--primary-text-color,#fff),border-radius:16px!important;box-shadow:var(--primary-text-color)!important}
+        .collapsed .value,.collapsed .label{display:none}
+
+        .icon{font-size:24px;color:var(--primary-text-color,#fff);opacity:.9;display:none;transition:.3s}
+        .collapsed .icon{display:flex;align-items:center;justify-content:center}
+
+        /* ---------- RIGHE DI PULSANTI ------------------------------------------------ */
+        .button-row,.media-controls,.cover-actions{
+          display:flex;gap:clamp(2px,1vw,2px);justify-content:center;margin-top:30px
+        }
+
+        /* ---------- SENSORI & LUCI --------------------------------------------------- */
+        .sensor,.light{
+          display:flex;justify-content:space-between;align-items:center;padding:12px;height:auto;
+          border-radius:16px;background:var(--card-background-color,rgba(255,255,255,.03));
+          border:1px solid var(--divider-color,rgba(255,255,255,.05));
+          cursor:pointer;transition:.3s;color:var(--primary-text-color,#fff);flex-shrink:0
+        }
+        .sensor:hover,.light:hover{background:transparent;border-color:var(--primary-color)}
+
+        /* ---------- MINI‑POPUP ------------------------------------------------------- */
+        .mini-popup{
+          position:absolute;top:50%!important;left:50%!important;transform:translate(-50%,-90%)!important;
+          background:var(--card-background-color);border-radius:16px;z-index:9999;
+          padding:0;overflow:visible!important;display:flex;justify-content:center;align-items:center;
+          animation:popup-appear .3s ease forwards;min-width:100px;max-width:90vw;max-height:80vh;width:auto;height:auto
+        }
+        @keyframes popup-appear{0%{opacity:0;transform:scale(.8,.4) translateY(-50px)}100%{transform:scale(1) translateY(0)}}
+        .mini-popup.closing{animation:dock-minimize .2s ease forwards;pointer-events:none;transform-origin:left center}
+        @keyframes dock-minimize{0%{opacity:1;transform:scale(1) translateY(0)}100%{opacity:0;transform:scale(.8,.4) translateY(-50px)}}
+        .mini-overlay{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:9998}
+
+        .mini-popup::after{
+          content:"";position:absolute;top:12px;left:-8px;border-width:8px;border-style:solid;
+          border-color:transparent var(--card-background-color,#1a1b1e) transparent transparent
+        }
+        .mini-popup .mini-close{
+          position:absolute;top:8px;right:8px;font-size:1.2em;color:var(--primary-text-color);cursor:pointer;z-index:10;user-select:none
+        }
+        .mini-popup .mini-close:hover{color:var(--primary-color)}
+
+        /* ---------- PERSONA ---------------------------------------------------------- */
+        .person{
+          display:flex;align-items:center;background:rgba(255,255,255,.03);
+          border-radius:16px;padding:14px 16px;margin-bottom:2px;border:1px solid rgba(255,255,255,.05);
+          transition:.3s;cursor:pointer;color:var(--primary-text-color,#fff);box-shadow:0 2px 6px rgba(0,0,0,.1);flex-shrink:0
+        }
+        .dashboard:not(.collapsed) .person:hover{
+          background:rgba(255,255,255,.08);
+          border-color:var(--primary-color);
+          transform:scale(1.05)
+          box-shadow:0 4px 10px rgba(0,0,0,.2)
+        }
+        .person-image{
+          width:50px;height:50px;border-radius:16px;object-fit:cover;margin-right:12px;
+          border:2px solid var(--primary-color,#7289da);transition:filter .3s,opacity .3s
+        }
+        .person-image.grayscale{filter:grayscale(100%) brightness(.7);opacity:.7}
+        .person-info{display:flex;flex-direction:column}
+        .person-info .name{font-weight:600;font-size:1rem}
+        .person-info .status{font-size:.875rem;opacity:.7}
+
+        .presence-badge{
+          position:absolute;top:-2px;right:-2px;width:15px;height:15px;border-radius:50%;
+          display:flex;justify-content:center;align-items:center;background:#fff;border:2px solid
+        }
+        .presence-badge ha-icon{--mdc-icon-size:10px;color:#000}
+        .presence-badge.home{border-color:#4caf50}
+        .presence-badge.away{border-color:#f44336}
+        .collapsed .person-info{display:none}
+
+        /* ---------- SENSOR STATE & ICONI ATTIVI ------------------------------------- */
+        .sensor-state{
+          width:100%;height:100%;background:transparent!important;border:none!important;box-shadow:none!important;
+          font-size:.8rem;display:flex;align-items:center;justify-content:center;padding:0!important
+        }
+        .collapsed .sensor-state{aspect-ratio:1/1;width:36px;height:36px}
+        .sensor-state.active{
+          background:var(--primary-color,#7289da);color:var(--text-primary-color,white);
+        }
+        ha-icon.on{color:var(--state-icon-active-color,var(--primary-color,#fbc02d))}
+        ha-icon:not(.on){color:var(--disabled-text-color,#666);opacity:.75}
+        .sensor-value-wrapper ha-icon:not(.on),.sensor-value-wrapper .sensor-value-text{color:var(--disabled-text-color,#666)}
+
+        /* ---------- DASHBOARD LAYOUT ------------------------------------------------- */
+        .dashboard{
+          background:var(--card-background-color,#1a1b1e);border-radius:var(--ha-card-border-radius,24px);
+          box-shadow:var(--ha-card-box-shadow,0 8px 32px rgba(0,0,0,.25));
+          width:auto;max-height:80vh;overflow:hidden;position:relative;backdrop-filter:blur(10px);
+          border:1px solid var(--divider-color,rgba(255,255,255,.1));display:flex;flex-direction:column;
+          transition:all .5s ease,height .5s,width .5s
+        }
+        .dashboard.vertical{flex-direction:column;width:var(--dashboard-width)!important;z-index: 1}
+        .dashboard.collapsed.horizontal {
+          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
+          display:flex!important;justify-content:center!important;align-items:center!important
+        }
+        .dashboard.horizontal {
+          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
+          display:flex!important;justify-content:center!important;align-items:center!important,min-height:300px!important;z-index:1
+        }
+        /* collapsed width */
+        .dashboard.collapsed.vertical{width:90px!important}
+
+        /* content area scroll */
+        .dashboard .content{overflow-y:auto;max-height:100vh;flex:1 1 auto}
+        :host(.horizontal):not(.collapsed) {
+          --custom-sidebar-height: 300px;
+        }
+        /* horizontal content scroll */
+        .dashboard.horizontal .content{
+          display:flex!important;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+          white-space:nowrap;scroll-snap-type:x mandatory;scroll-padding-inline:16px;
+          scrollbar-width:thin;scrollbar-color:var(--primary-color) transparent;
+          gap:12px;padding:12px 8px 16px 8px;box-sizing:border-box
+        }
+        .dashboard.horizontal .content>*{scroll-snap-align:start;flex-shrink:0}
+        .dashboard.horizontal .content::-webkit-scrollbar{height:6px}
+        .dashboard.horizontal .content::-webkit-scrollbar-thumb{background:var(--primary-color);border-radius:4px}
+
+        /* header tweaks in horizontal */
+        .dashboard.horizontal .header{flex-direction:column;align-items:center;justify-content:center;border-bottom:none!important;border-right:1px solid var(--divider-color,rgba(255,255,255,.1))!important}
+        .dashboard.horizontal .clock{font-size:2rem;font-weight:700;margin-bottom:6px;color:var(--primary-text-color,#fff)}
+        .dashboard.horizontal .title{font-size:1rem;margin-top:5px;text-align:center}
+
+        /* card widths in layouts */
+        .dashboard.vertical:not(.collapsed)
+          .card:is(.light, .switch, .button) {
+            width: 90%;
+            padding: 16px;
+            text-align: center;
+            align-self: center;
+        }
+
+        .dashboard.horizontal:not(.collapsed)
+          .card.light {
+            width: 110px !important;
+            min-height: 100px;
+            max-height: none;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center !important;
+            padding: 12px;
+            text-align: center;
+        }
+        .dashboard.horizontal:not(.collapsed)
+          .card.switch,
+        .dashboard.horizontal:not(.collapsed)
+          .card.button {
+            width: 110px !important;
+            min-height: 100px;
+            max-height: none;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center !important;
+            padding: 12px;
+            text-align: center;
+        }
+        .dashboard.horizontal:not(.collapsed)
+          .sensor,
+        .dashboard.horizontal:not(.collapsed)
+          .weather,
+        .dashboard.horizontal:not(.collapsed)
+          .person {
+            width: 100px !important;
+            height: 100px !important;
+            padding: 12px;
+            text-align: center;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center !important;
+        }
+
+        /* collapsed universal size */
+        .dashboard.collapsed .sensor,
+        .dashboard.collapsed .weather,
+        .dashboard.collapsed .media-player,
+        .dashboard.collapsed .fan,
+        .dashboard.collapsed .cover,
+        .dashboard.collapsed .climate,
+        .dashboard.collapsed .button,
+        .dashboard.collapsed .custom-card,
+        .dashboard.collapsed .light,
+        .dashboard.collapsed .switch{
+          width:56px;height:56px;padding:8px;margin:0 auto;display:flex;align-items:center;justify-content:center;box-sizing:border-box
+        }
+
+        /* person collapsed tweaks */
+        .dashboard.collapsed .person{
+          padding:8px;margin:0 auto;background:var(--card-background-color,rgba(255,255,255,.03));box-shadow:0 4px 10px rgba(0,0,0,.2);border-radius:16px;box-sizing:border-box
+        }
+        .dashboard.collapsed .collapsed-clickable-box:hover{
+          background:rgba(255,255,255,.08);border-radius:16px;border-color:var(--primary-color);transform:scale(1.05)
+        }
+        .dashboard.collapsed .person-image{width:52px;height:52px;border-radius:16px;margin:0}
+        .dashboard.horizontal.collapsed .person img.person-image{width:50px;height:50px;border-radius:50%;object-fit:cover}
+        .dashboard.horizontal.collapsed .person-info{display:none!important}
+        .dashboard.collapsed .collapsed-clickable-box,
+        .dashboard.horizontal.collapsed .collapsed-clickable-box {
+          width: 56px !important;
+          height: 56px !important;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        /* horizontally hidden big cards */
+        .dashboard.horizontal .climate,
+        .dashboard.horizontal .cover,
+        .dashboard.horizontal .media-player,
+        .dashboard.horizontal .fan{display:none}
+
+        /* expand button rotazione orizzontale */
+        .dashboard.horizontal .expand-button{writing-mode:vertical-rl;transform:rotate(180deg)}
+
+        /* ---------- CONTROL BUTTON --------------------------------------------------- */
+        .control-button{
+          background:var(--primary-color);color:var(--text-primary-color);border:none;border-radius:.6em;
+          width:2.4em;height:2.4em;display:flex;align-items:center;justify-content:center;
+          cursor:pointer;transition:.3s;font-size:1.2em
+        }
+
+        .rgb-control-button {
+          background:transparent;color:var(--text-primary-color);border:none;border-radius:.6em;
+          width:2em;height:2em;display:flex;align-items:center;justify-content:center;
+          cursor:pointer;transition:.3s;font-size:1.5em
+        }
+        .rgb {
+          background:transparent;color:var(--text-primary-color);border:none;border-radius:.6em;
+          width:auto;height:30px;display:flex;align-items:center;justify-content:center;
+          cursor:pointer;transition:.3s;font-size:1.2em
+        }
+        .control-button:hover{filter:brightness(1.1)}
+        .control-button:active{transform:scale(.98)}
+        .control-button ha-icon{--mdc-icon-size:1.2em}
+
+        .slider-container {
+          width: 100%;
+          margin: 10px auto;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .slider {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 100%;
+          height: 6px;
+          border-radius: 4px;
+          background: var(--secondary-background-color);
+          outline: none;
+          cursor: pointer;
+        }
+
+        .slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          cursor: pointer;
+          box-shadow: 0 0 4px var(--primary-color);
+          position: relative;
+          z-index: 2;
+        }
+
+        .slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          cursor: pointer;
+          box-shadow: 0 0 4px var(--primary-color);
+          position: relative;
+          z-index: 2;
+        }
+        /* ---------- SLIDER CLIMATE STYLE FIX ----------------------------------- */
+        input.slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          cursor: pointer;
+          box-shadow: 0 0 4px var(--primary-color);
+        }
+
+        input.slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          cursor: pointer;
+          box-shadow: 0 0 4px var(--primary-color);
+        }
+
+        input.slider::-webkit-slider-runnable-track,
+        input.slider::-moz-range-track {
+          width: 100%;
+          height: 6px;
+          border-radius: 4px;
+          background: var(--secondary-background-color);
+        }
+
+        .slider::-webkit-slider-thumb:hover{transform: scale(1.2)}
+        /* ---------- TOGGLE SWITCH ---------------------------------------------------- */
+        .toggle-switch{position:relative;display:inline-block;width:40px;height:24px}
+        .toggle-switch input{opacity:0;width:0;height:0}
+        .toggle-slider{
+          position:absolute;cursor:pointer;inset:0;background:var(--secondary-background-color);
+          transition:.4s;border-radius:24px
+        }
+        .toggle-slider:before{
+          content:"";position:absolute;height:16px;width:16px;left:4px;bottom:4px;background:#fff;
+          transition:.4s;border-radius:50%
+        }
+        input:checked + .toggle-slider{background:var(--primary-color)}
+        input:checked + .toggle-slider:before{transform:translateX(16px)}
+        .icon ha-icon{color:var(--primary-color);--mdc-icon-size:20px}
+
+        /* ---------- CARD TIPI SPECIFICI (button/fan/cover/climate/media) ------------- */
+        .card.button,
+        .card.light,
+        .card.fan,
+        .card.cover,
+        .card.climate,
+        .card.media-player{
+          padding:16px 10%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:1
+        }
+        .card.light .light-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px; /* spazio tra elementi interni */
+          margin-bottom: 8px; /* margine sotto al blocco completo */
+        }
+        .card.switch mwc-switch,
+        .card.switch ha-switch{
+          position: static !important;   /* torna nel flusso normale */
+          margin: 0    auto   !important;/* centrato orizzontalmente */
+        }
+        .card.switch{
+          display: flex         !important;
+          flex-direction: column!important;
+          align-items: center    !important;
+          justify-content: center!important;
+          gap: 12px              !important; /* spazio costante */
+        }
+
+        .card.switch .toggle-switch {
+          margin: 0 auto !important;
+        }
+
+        .card.button{gap:10px}
+        .card.button .value{text-align:center;width:100%;margin:0}
+        .card.button .control-button{align-self:center}
+
+        /* ---------- SENSOR VALUE WRAPPERS ------------------------------------------- */
+        .sensor-value-wrapper.collapsed-centered{
+          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px
+        }
+        .sensor-value-wrapper.collapsed-centered ha-icon{font-size:24px}
+        .sensor-value-text{font-size:.9rem;font-weight:500;color:var(--primary-text-color,#fff)}
+        .sensor-value-wrapper.expanded-right{
+          display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;width:100%
+        }
+        .sensor-value-wrapper.expanded-right ha-icon{font-size:20px}
+        .sensor-number-text{font-size:1rem;font-weight:600;color:var(--primary-text-color,#fff)}
+
+        /* ---------- WEATHER ICON + ANIMAZIONI --------------------------------------- */
+        .weather-icon{font-size:2rem;margin-bottom:8px;transition:.3s}
+        .collapsed .weather-icon{font-size:1.5rem;margin-bottom:0}
+
+        /* keyframes originali (twinkle, float, pulse, bounce, flash, storm, rain, shake, snow-spin) */
+        @keyframes twinkle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.9)}}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+        @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+        @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+        @keyframes flash{0%,49%,51%,100%{opacity:1}50%{opacity:0}}
+        @keyframes storm{0%,100%{transform:translate(0,0)}25%{transform:translate(-2px,2px)}50%{transform:translate(0,-2px)}75%{transform:translate(2px,2px)}}
+        @keyframes rain{0%{transform:translateY(-3px)}50%{transform:translateY(0)}100%{transform:translateY(-3px)}}
+        @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
+        .weather-icon.twinkle{animation:twinkle 2s ease-in-out infinite}
+        .weather-icon.float{animation:float 3s ease-in-out infinite}
+        .weather-icon.pulse{animation:pulse 2s ease-in-out infinite}
+        .weather-icon.bounce{animation:bounce 1s ease-in-out infinite}
+        .weather-icon.flash{animation:flash 2s ease-in-out infinite}
+        .weather-icon.storm{animation:storm 3s ease-in-out infinite}
+        .weather-icon.rain{animation:rain 1s ease-in-out infinite}
+        .weather-icon.snow{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;line-height:0;animation:snow-spin 3s linear infinite;transform-origin:50% 50%}
+        @keyframes snow-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .weather-icon.shake{animation:shake 1s ease-in-out infinite}
+
+        /* ---------- MODAL (mappa, ecc.) --------------------------------------------- */
+        .modal{
+          position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;justify-content:center;align-items:center;z-index:9999
+        }
+        .modal-content{
+          background:var(--card-background-color,#1a1b1e);border-radius:var(--ha-card-border-radius,16px);
+          padding:24px;width:100%;max-width:50vw;max-height:80vh;overflow-y:auto;position:relative
+        }
+        @media (max-width:640px){.modal-content{max-width:90vw!important}}
+        @media (max-width:720px){.modal-content{max-width:50vw}}
+        @media (min-width:1280px){.modal-content{max-width:30vw!important}}
+        .modal-header{display:flex;align-items:center;margin-bottom:16px}
+        .modal-close{
+          position:absolute;top:16px;right:16px;background:none;border:none;
+          color:var(--primary-text-color,#fff);font-size:24px;cursor:pointer;padding:4px
+        }
+        .modal-title{font-size:1.5rem;font-weight:600;margin:0;color:var(--primary-text-color,#fff)}
+
+        /* ---------- STATUS INDICATORS ----------------------------------------------- */
+        .status-indicator{width:12px;height:12px;border-radius:50%;margin-right:8px}
+        .status-indicator.home{background:var(--state-icon-active-color,#4caf50)}
+        .status-indicator.away{background:var(--warning-color,#ff9800)}
+
+        /* ---------- MAP CONTAINER ---------------------------------------------------- */
+        .map-container{
+          width:100%;height:400px;border-radius:8px;overflow:hidden;margin-top:16px;
+          display:flex;justify-content:center;align-items:center
+        }
+        .map-container ha-map{width:100%!important;height:100%!important;display:block}
+
+        /* ---------- MINI‑POPUP SPECIFIC SIZE PER TIPI -------------------------------- */
+        .mini-popup .fan,
+        .mini-popup .cover,
+        .mini-popup .media-player{width:200px!important;height:200px!important;flex-shrink:0}
+        .mini-popup .sensor{width:180px!important;height:180px!important;flex-shrink:0}
+        .mini-popup .card.light,{
+          width:260px;padding:16px;padding-bottom:32px;box-sizing:border-box;overflow:visible
+        }
+        .mini-popup .card.light .label{font-size:1rem;height:20px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .mini-popup .card.light .button-row{justify-content:center;margin-top:12px}
+        .mini-popup .switch {
+          width: 90%;
+          padding: 16px;
+          text-align: center;
+          align-self: center;
+        }
+        .mini-popup .card.climate{width:300px}
+        .mini-popup .card.climate .button-row button{width:40px;height:40px;font-size:1.2rem;margin:0 4px}
+        .mini-popup .card.climate .label:last-of-type{
+          font-size:.9rem;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;width:100%;display:block
+        }
+        .mini-popup .card{background:var(--card-background-color);border:1px solid var(--divider-color);box-shadow:var(--ha-card-box-shadow);border-radius:var(--ha-card-border-radius);padding:12px;overflow:visible!important}
+        .mini-popup .content{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:auto!important;max-width:90vw!important}
+        .mini-popup ha-card{width:auto!important}
+
+
+        .dashboard.collapsed .person,
+        .dashboard.horizontal.collapsed .person{
+          width:var(--sidebar-item-size);
+          height:var(--sidebar-item-size);
+          padding:0;
+          margin:0 auto;
+          display:flex;
+          justify-content:center;
+          align-items:center;
+          box-shadow:0 4px 10px rgba(0,0,0,.2);
+        }
+
+        .dashboard.collapsed .person-image{
+          margin:0;
+        }
+
+        /* ============================================================================ */
+
+        /* ---------- CUSTOM-CARD WIDTH AUTO ------------------------------------------ */
+        .card.custom-card{
+          width:auto !important;           /* lascia la card adattarsi al contenuto */
+        }
+
+        /* Orizzontale: niente forzatura a 100px */
+        .dashboard.horizontal .card.custom-card{
+          width:auto !important;
+        }
+
+        /* ---------- ESPANSIONE SIDEBAR ---------------------------------------------- */
+        /* Quando la sidebar NON è .collapsed mostriamo wrapper e card al 100% della     */
+        /* larghezza disponibile                                                         */
+        .dashboard:not(.collapsed) .custom-card-wrapper,
+        .dashboard:not(.collapsed) .card.custom-card{
+          width:auto !important;
+          min-width: 50px;
+        }
+
+        /* Safety: se .expanded-content è presente, annulla limiti di width             */
+        .dashboard.expanded-content.vertical{
+          width: 90px;
+          max-width:var(--dashboard-width,200px) !important;
+          height:auto!important;
+          max-height:none!important;
+          overflow:visible!important;
+          border-radius: 16px;
+        }
+        .dashboard.expanded-content.vertical .expand-button{
+          width:auto;
+        }
+        .dashboard.expanded-content.horizontal{
+          max-width:none!important;width:100%!important;
+        }
+
+        /* Assicura che anche l'area contenuti non abbia limiti */
+        .dashboard.expanded-content.vertical .content{
+          max-height:none!important;
+        }
+        .dashboard.expanded-content.vertical .person-wrapper {
+          width: var(--sidebar-item-size, 50px) !important;
+          max-width: var(--sidebar-item-size, 50px) !important;
+          margin: 0 auto;
+        }
+        .avatar-container {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-self: center;
+          align-items: center;
+          justify-content: center;
+        }
+        .person-wrapper {
+          position: relative;
+          width: auto;
+          height: 100%;
+          display: flex;
+          align-self: center;
+          align-items: center;
+          justify-content: center;
+        }
+        .dashboard.horizontal.expanded-content {
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          margin: auto !important;
+          width: var(--dashboard-width, 90vw) !important;
+          height: var(--sidebar-item-size, 56px) !important;
+          overflow: visible !important;
+          z-index: 999 !important;
+        }
+
+        .dashboard.horizontal.expanded-content .content {
+          position: absolute !important;
+          top: var(--sidebar-item-size, 56px) !important;
+          left: 0 !important;
+          width: 100% !important;
+          display: flex !important;
+          flex-direction: row !important;
+          overflow-x: auto !important;
+          overflow-y: visible !important;
+          padding: 8px !important;
+          gap: 12px !important;
+        }
+
     `;
   }
 
@@ -2284,7 +1630,6 @@ class HaDashboardSidebar extends LitElement {
       return html`
         <div class="card climate">
           <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
                @click=${e => this._handleTapAction(e, config)}
                @contextmenu=${e => this._handleHoldAction(e, config)}>
@@ -2299,11 +1644,10 @@ class HaDashboardSidebar extends LitElement {
         <div class="value" @click=${e => e.stopPropagation()}>
           ${current_temperature}°${temperature_unit}
         </div>
-
-        <div class="label">
+        <div class="label"
+             @click=${() => this._showMoreInfo(state.entity_id)}>
           ${config.name || state.attributes.friendly_name}
         </div>
-
         <div class="climate-controls"
              style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
           <div class="button-row"
@@ -2346,15 +1690,6 @@ class HaDashboardSidebar extends LitElement {
               @change=${e => this._callService('climate', 'set_temperature', config.entity, {
                 temperature: Number(e.target.value)
               })}
-              style="
-                -webkit-appearance:none;
-                appearance:none;
-                width:100%;
-                height:6px;
-                border-radius:4px;
-                background:var(--secondary-background-color);
-                outline:none;
-                cursor:pointer;">
           </div>
 
           <div class="label" style="text-align:center;margin-top:4px;">
@@ -2415,7 +1750,6 @@ class HaDashboardSidebar extends LitElement {
         <div class="card light${compact ? " compact" : ""}">
           <div
             class="collapsed-clickable-box"
-            style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
             tabindex="0"
             @click=${e => this._handleTapAction(e, config)}
             @contextmenu=${e => this._handleHoldAction(e, config)}
@@ -2449,62 +1783,64 @@ class HaDashboardSidebar extends LitElement {
 
         ${isOn && (supportsBrightness || supportsKelvin || supportsColor)
           ? html`
-              ${supportsBrightness
-                ? html`
-                    <div class="slider-container">
-                      <input
-                        type="range"
-                        class="slider"
-                        .value=${this._localBrightness}
-                        @input=${e => (this._localBrightness = Number(e.target.value))}
-                        @change=${e =>
-                          this._callService("light", "turn_on", config.entity, {
-                            brightness_pct: Number(e.target.value),
-                          })}
-                      />
-                      <div class="label" style="text-align:center; margin-top:8px;">
+              <div style="display:flex;flex-direction:column;gap:2px;width:100%;">
+                ${supportsBrightness
+                  ? html`
+                      <div class="slider-container" style="width:100%;">
+                        <input
+                          type="range"
+                          class="slider"
+                          .value=${this._localBrightness}
+                          @input=${e => (this._localBrightness = Number(e.target.value))}
+                          @change=${e =>
+                            this._callService("light", "turn_on", config.entity, {
+                              brightness_pct: Number(e.target.value),
+                            })}
+                        />
+                      </div>
+                      <div class="label" style="text-align:center;margin-top:4px;">
                         ${this._localBrightness}%
                       </div>
-                    </div>
-                  `
-                : ""}
+                    `
+                  : ""}
 
-              ${supportsKelvin
-                ? html`
-                    <div class="slider-container">
-                      <input
-                        type="range"
-                        class="slider"
-                        min="2000"
-                        max="6500"
-                        step="50"
-                        .value=${this._localKelvin}
-                        @input=${e => (this._localKelvin = Number(e.target.value))}
-                        @change=${e =>
-                          this._callService("light", "turn_on", config.entity, {
-                            kelvin: Number(e.target.value),
-                          })}
-                      />
-                      <div class="label" style="text-align:center;">
-                        ${this._localKelvin} K
+                ${supportsKelvin
+                  ? html`
+                      <div class="slider-container" style="width:100%;">
+                        <input
+                          type="range"
+                          class="slider"
+                          min="2000"
+                          max="6500"
+                          step="50"
+                          .value=${this._localKelvin}
+                          @input=${e => (this._localKelvin = Number(e.target.value))}
+                          @change=${e =>
+                            this._callService("light", "turn_on", config.entity, {
+                              kelvin: Number(e.target.value),
+                            })}
+                        />
                       </div>
-                    </div>
-                  `
-                : ""}
+                      <div class="label" style="text-align:center;margin-top:4px;">
+                        ${this._localKelvin} K
+                      </div>
+                    `
+                  : ""}
 
-              ${supportsColor
-                ? html`
-                    <div class="button-row" style="justify-content:center;">
-                      <button
-                        class="control-button"
-                        title="RGB picker"
-                        @click=${() => this._showMoreInfo(config.entity)}
-                      >
-                        🎨
-                      </button>
-                    </div>
-                  `
-                : ""}
+                ${supportsColor
+                  ? html`
+                      <div class="rgb" style="justify-content:center;">
+                        <button
+                          class="rgb-control-button"
+                          title="RGB picker"
+                          @click=${() => this._showMoreInfo(config.entity)}
+                        >
+                          🎨
+                        </button>
+                      </div>
+                    `
+                  : ""}
+              </div>
             `
           : ""}
       </div>
@@ -2525,7 +1861,6 @@ class HaDashboardSidebar extends LitElement {
           ? html`
               <div
                 class="collapsed-clickable-box"
-                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                 tabindex="0"
                 @click=${e => this._handleTapAction(e, config)}
                 @contextmenu=${e => this._handleHoldAction(e, config)}
@@ -2534,13 +1869,11 @@ class HaDashboardSidebar extends LitElement {
               </div>
             `
           : html`
-              <div
-                class="switch-header"
-                style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:0 6px;"
-              >
+              <div class="switch-header">
                 <div class="value" @click=${e => e.stopPropagation()}>
                   ${config.name || state.attributes.friendly_name}
                 </div>
+
                 <label class="toggle-switch">
                   <input
                     type="checkbox"
@@ -2572,7 +1905,7 @@ class HaDashboardSidebar extends LitElement {
       return html`
         <div class="card button">
           <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+               class="centered-box"
                tabindex="0"
                @click=${e => this._handleTapAction(e, config)}
                @contextmenu=${e => this._handleHoldAction(e, config)}>
@@ -2613,7 +1946,6 @@ class HaDashboardSidebar extends LitElement {
       return html`
         <div class="card fan">
           <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
                @click=${e => this._handleTapAction(e, config)}
                @contextmenu=${e => this._handleHoldAction(e, config)}>
@@ -2661,16 +1993,7 @@ class HaDashboardSidebar extends LitElement {
               )}
               min="0"
               max="100"
-              step="1"
-              style="
-                -webkit-appearance:none;
-                appearance:none;
-                width:100%;
-                height:6px;
-                border-radius:4px;
-                background:var(--secondary-background-color);
-                outline:none;
-                cursor:pointer;">
+              step="1">
             <div class="label" style="text-align:center; margin-top:4px;">
               ${this._localFanSpeed}%
             </div>
@@ -2750,31 +2073,6 @@ class HaDashboardSidebar extends LitElement {
                    'media_player', 'volume_set', config.entity,
                    { volume_level: Number(e.target.value) / 100 })}>
         </div>
-
-        <style>
-          input.slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 16px; height: 16px;
-            border-radius: 50%;
-            background: var(--primary-color);
-            cursor: pointer;
-            box-shadow: 0 0 4px var(--primary-color);
-          }
-          input.slider::-moz-range-thumb {
-            width: 16px; height: 16px;
-            border-radius: 50%;
-            background: var(--primary-color);
-            cursor: pointer;
-            box-shadow: 0 0 4px var(--primary-color);
-          }
-          input.slider::-webkit-slider-runnable-track,
-          input.slider::-moz-range-track {
-            width: 100%; height: 6px;
-            border-radius: 4px;
-            background: var(--secondary-background-color);
-          }
-        </style>
       </div>
     `;
   }
@@ -3072,18 +2370,18 @@ class HaDashboardSidebar extends LitElement {
 
     const isVertical = mode === 'vertical';
     const isHorizontal = mode === 'horizontal';
+    const isExpanded = this._expandContent;
 
     const dashboardClasses = [
       'dashboard',
       this._collapsed ? 'collapsed' : '',
       isVertical ? 'vertical' : 'horizontal',
-      this._expandContent ? 'expanded-content' : ''
+      isExpanded ? 'expanded-content' : ''
     ].join(' ');
 
     const width  = this._configuredWidth  || 'auto';
     const height = this._configuredHeight || 'auto';
-
-    const effectiveWidth = (isVertical || this._expandContent) ? width : 'auto';
+    const effectiveWidth = isVertical ? width : (isExpanded ? width : 'auto');
 
     let dashboardStyle = `
       width: ${effectiveWidth};
@@ -3097,6 +2395,16 @@ class HaDashboardSidebar extends LitElement {
     if (isVertical && align === 'right') {
       dashboardStyle += 'margin-left: auto;';
     }
+
+    const cardStyle = `
+      padding: 0;
+      width: ${effectiveWidth};
+      height: ${isHorizontal ? '100px' : height};
+      max-width: none;
+      margin: 0;
+      background: transparent;
+      box-shadow: none;
+    `;
 
     const dashboardHtml = html`
       <div class="${dashboardClasses}" style="${dashboardStyle}">
@@ -3135,16 +2443,9 @@ class HaDashboardSidebar extends LitElement {
         width: 100%;
         justify-content: ${justify};
         align-items: ${alignItems};
+        position: relative;
       ">
-        <ha-card style="
-          padding: 0;
-          width: ${effectiveWidth};
-          height: ${height};
-          max-width: none;
-          margin: 0;
-          background: transparent;
-          box-shadow: none;
-        ">
+        <ha-card style="${cardStyle}">
           ${dashboardHtml}
           ${this._renderPersonModal()}
           ${this._miniEntity ? html`
@@ -3160,6 +2461,7 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
+
 
   static get configSchema() {
     return {
