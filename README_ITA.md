@@ -187,7 +187,7 @@ card_mod:
 |--------------------------|-----------------------------------------------------------------------------|
 | `collapsed` per entità   | Ogni entità può essere visibile solo quando la sidebar è collassata         |
 | `tracker_entity`         | Usato con `type: person` per mostrare posizione GPS                         |
-| `custom_card.card`       | Può contenere qualsiasi Lovelace card annidata                              |
+| `custom_card`            | Può contenere qualsiasi Lovelace card                                       |
 | `style:`                 | Compatibile con `card-mod` a livello di card principale                     |
 | `title` dinamico         | Può includere `{{ user }}` per mostrare nome utente loggato                 |
 
