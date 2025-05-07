@@ -500,7 +500,7 @@ class HaDashboardSidebarEditor extends LitElement {
                   title="For complex cards, build it outside and paste it in YAML mode."
                   @click=${() => this._openCardPicker(i)}>
                   Select Card (YAML editor not available yet)
-                </mwc-button>
+                </mwc-button>`
           }
 
           <details class="expander">
