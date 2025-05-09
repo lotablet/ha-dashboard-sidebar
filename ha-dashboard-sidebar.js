@@ -489,12 +489,43 @@ class HaDashboardSidebarEditor extends LitElement {
         <div class="column">
           ${ent.type !== "custom_card"
             ? html`
-                <div class="field-label">Entity</div>
-                <ha-selector class="full" .hass=${this.hass}
-                  .selector=${{ entity: { domain: [ent.type] } }}
-                  .value=${ent.entity}
-                  @value-changed=${e => this._row(i, "entity", e.detail.value)}>
-                </ha-selector>`
+                <div class="row" style="gap: 12px;">
+                  <div style="flex: 2;min-width: 20px;">
+                    <div class="field-label">Entity</div>
+                    <ha-selector class="full" .hass=${this.hass}
+                      .selector=${{ entity: { domain: [ent.type] } }}
+                      .value=${ent.entity}
+                      @value-changed=${e => this._row(i, "entity", e.detail.value)}>
+                    </ha-selector>
+                  </div>
+
+                  <div style="flex: 2;min-width: 20px;">
+                    <div class="field-label">Collapsed</div>
+                    <ha-selector class="full" .hass=${this.hass}
+                      .selector=${{
+                        select: {
+                          mode: "dropdown",
+                          options: [
+                            { value: "none", label: "None" },
+                            { value: "true", label: "True" },
+                            { value: "false", label: "False" }
+                          ]
+                        }
+                      }}
+                      .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
+                      @value-changed=${e => {
+                        const ents = [...this._config.entities];
+                        const val = e.detail.value;
+                        if (val === "none") {
+                          delete ents[i].collapsed;
+                        } else {
+                          ents[i].collapsed = val === "true";
+                        }
+                        this._push("entities", ents);
+                      }}>
+                    </ha-selector>
+                  </div>
+                </div>`
             : html`
                 <mwc-button class="yaml"
                   title="For complex cards, build it outside and paste it in YAML mode."
@@ -1172,12 +1203,6 @@ class HaDashboardSidebar extends LitElement {
           justify-content: center;
           cursor: pointer;
         }
-        /* horizontally hidden big cards */
-        .dashboard.horizontal .climate,
-        .dashboard.horizontal .cover,
-        .dashboard.horizontal .media-player,
-        .dashboard.horizontal .fan{display:none}
-
         /* expand button rotazione orizzontale */
         .dashboard.horizontal .expand-button{writing-mode:vertical-rl;transform:rotate(180deg)}
 
