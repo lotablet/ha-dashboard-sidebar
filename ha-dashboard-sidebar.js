@@ -1,6 +1,41 @@
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
 import { loadHaComponents, DEFAULT_HA_COMPONENTS } from "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
 import { LitElement, html, css, nothing } from "https://unpkg.com/lit@2.8.0/index.js?module";
+function bindActionHandler(el, { hasHold = false, hasDoubleClick = false } = {}) {
+  if (el.__boundActionHandler) return;
+  el.__boundActionHandler = true;
+
+  let timer;
+  let start;
+
+  el.addEventListener('mousedown', (ev) => {
+    start = ev.timeStamp;
+    timer = setTimeout(() => {
+      fireAction(el, 'hold');
+    }, 500);
+  });
+
+  el.addEventListener('mouseup', (ev) => {
+    clearTimeout(timer);
+    const duration = ev.timeStamp - start;
+    if (hasHold && duration >= 500) return;
+    fireAction(el, 'tap');
+  });
+
+  if (hasDoubleClick) {
+    el.addEventListener('dblclick', () => {
+      fireAction(el, 'double_tap');
+    });
+  }
+
+  function fireAction(target, type) {
+    target.dispatchEvent(new CustomEvent('action', {
+      detail: { action: type },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+}
 
 loadHaComponents([
   ...DEFAULT_HA_COMPONENTS,
@@ -91,25 +126,60 @@ class HaDashboardSidebarEditor extends LitElement {
       composed: true,
     }));
   }
-
   _row(i, key, val) {
     const ents = [...this._config.entities];
-    ents[i] = { ...ents[i], [key]: val };
 
-    if (key === "type") {
+    if (["tap_action", "hold_action", "double_tap_action"].includes(key)) {
+      let fixed = { ...val };
+
+      // PATCH perform-action → call-service
+      if (fixed.action === "perform-action" && fixed.perform_action) {
+        fixed.action = "call-service";
+        fixed.service = fixed.perform_action;
+        delete fixed.perform_action;
+      }
+
+      ents[i] = { ...ents[i], [key]: fixed };
+    }
+
+    // PATCH: aggiorna service_data per call-service dinamicamente
+    else if (
+      key.startsWith("tap_action.service_data.") ||
+      key.startsWith("hold_action.service_data.") ||
+      key.startsWith("double_tap_action.service_data.")
+    ) {
+      const [actionKey, , param] = key.split(".");
+      const action = ents[i][actionKey] || { action: "call-service" };
+      action.service_data = {
+        ...(action.service_data || {}),
+        [param]: val
+      };
+      ents[i] = { ...ents[i], [actionKey]: action };
+    }
+
+    else if (key === "type") {
       const newType = val;
       ents[i] = {
         type: newType,
         icon: ents[i].icon || "",
-        ...(newType === "custom_card" ? { card: ents[i].card || {} } : { entity: "" }),
+        ...(newType === "custom_card"
+          ? { card: ents[i].card || {} }
+          : { entity: "" }),
         tap_action: { action: "more-info" },
         hold_action: { action: "none" },
-        double_tap_action: { action: "none" }
+        double_tap_action: { action: "none" },
+        show_popup: false
       };
+    }
+
+    else {
+      ents[i] = { ...ents[i], [key]: val };
     }
 
     this._push("entities", ents);
   }
+
+
 
 
   _add() {
@@ -478,12 +548,20 @@ class HaDashboardSidebarEditor extends LitElement {
               @value-changed=${e => this._row(i, "type", e.detail.value)}>
             </ha-selector>
           </div>
-          <div class="column" style="min-width: 50px;">
+          <div class="column" style="min-width: 20px;">
             <div class="field-label">Icon</div>
             <ha-icon-picker class="sel icon-cell" .hass=${this.hass}
               .value=${ent.icon || ""}
               @value-changed=${e => this._row(i, "icon", e.detail.value)}>
             </ha-icon-picker>
+          </div>
+          <div class="column" style="min-width: 50px;">
+            <ha-formfield class="switch" label="Show popup">
+              <ha-switch
+                .checked=${ent.show_popup ?? false}
+                @change=${e => this._row(i, "show_popup", e.target.checked)}>
+              </ha-switch>
+            </ha-formfield>
           </div>
         </div>
         <div class="column">
@@ -536,7 +614,6 @@ class HaDashboardSidebarEditor extends LitElement {
 
           <details class="expander">
             <summary><ha-icon icon="mdi:gesture-tap-button"></ha-icon><b> Azioni Interazione</b></summary>
-
             <!-- Tap Action -->
             <div class="field-label">Tap Action</div>
             <ha-selector class="full" .hass=${this.hass}
@@ -553,46 +630,6 @@ class HaDashboardSidebarEditor extends LitElement {
                   const updated = { ...(ent.tap_action || { action: "more-info" }) };
                   updated.entity = e.detail.value;
                   this._row(i, "tap_action", updated);
-                }}>
-              </ha-selector>
-            ` : ""}
-
-            <!-- Hold Action -->
-            <div class="field-label">Hold Action</div>
-            <ha-selector class="full" .hass=${this.hass}
-              .selector=${{ ui_action: {} }}
-              .value=${ent.hold_action || { action: "none" }}
-              @value-changed=${e => this._row(i, "hold_action", e.detail.value)}>
-            </ha-selector>
-            ${ent.hold_action?.action === "more-info" ? html`
-              <div class="field-label">Show entity (optional)</div>
-              <ha-selector class="full" .hass=${this.hass}
-                .selector=${{ entity: {} }}
-                .value=${ent.hold_action.entity || ""}
-                @value-changed=${e => {
-                  const updated = { ...(ent.hold_action || { action: "more-info" }) };
-                  updated.entity = e.detail.value;
-                  this._row(i, "hold_action", updated);
-                }}>
-              </ha-selector>
-            ` : ""}
-
-            <!-- Double Tap Action -->
-            <div class="field-label">Double Tap Action</div>
-            <ha-selector class="full" .hass=${this.hass}
-              .selector=${{ ui_action: {} }}
-              .value=${ent.double_tap_action || { action: "none" }}
-              @value-changed=${e => this._row(i, "double_tap_action", e.detail.value)}>
-            </ha-selector>
-            ${ent.double_tap_action?.action === "more-info" ? html`
-              <div class="field-label">Show entity (optional)</div>
-              <ha-selector class="full" .hass=${this.hass}
-                .selector=${{ entity: {} }}
-                .value=${ent.double_tap_action.entity || ""}
-                @value-changed=${e => {
-                  const updated = { ...(ent.double_tap_action || { action: "more-info" }) };
-                  updated.entity = e.detail.value;
-                  this._row(i, "double_tap_action", updated);
                 }}>
               </ha-selector>
             ` : ""}
@@ -638,7 +675,10 @@ class HaDashboardSidebarEditor extends LitElement {
     .sel {
       --mdc-shape-small: 6px;
     }
-
+    ha-textfield {
+      min-width: 10px;
+      max-width: none;
+    }
     .sel.small {
       flex: 2;
       border-radius: 25px;
@@ -987,18 +1027,26 @@ class HaDashboardSidebar extends LitElement {
         }
         .collapsed .card{padding:12px;display:flex;align-items:center;justify-content:center;aspect-ratio:1}
         .card:hover{border-color:var(--primary-color);transform:translateY(-2px)}
-
-        .value{font-size:1rem;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;color:var(--primary-text-color,#fff)}
+        .value {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            align-items: center;
+            gap: 8px;
+            color: var(--primary-text-color,#fff)
+            display: -webkit-box;
+            -webkit-box-orient: horizontal;
+            overflow: hidden;
+            -webkit-line-clamp: 1;
+            text-overflow: ellipsis;
+            width: 100px;
+            white-space: nowrap;
+        }
         .label{font-size:1.1rem;transition:.3s;color:var(--primary-text-color,#fff),border-radius:16px!important;box-shadow:var(--primary-text-color)!important}
         .collapsed .value,.collapsed .label{display:none}
 
         .icon{font-size:24px;color:var(--primary-text-color,#fff);opacity:.9;display:none;transition:.3s}
         .collapsed .icon{display:flex;align-items:center;justify-content:center}
-
-        /* ---------- RIGHE DI PULSANTI ------------------------------------------------ */
-        .button-row,.media-controls,.cover-actions{
-          display:flex;gap:clamp(2px,1vw,2px);justify-content:center;margin-top:30px
-        }
 
         /* ---------- SENSORI & LUCI --------------------------------------------------- */
         .sensor,.light{
@@ -1070,7 +1118,7 @@ class HaDashboardSidebar extends LitElement {
           background:var(--primary-color,#7289da);color:var(--text-primary-color,white);
         }
         ha-icon.on{color:var(--state-icon-active-color,var(--primary-color,#fbc02d))}
-        ha-icon:not(.on){color:var(--disabled-text-color,#666);opacity:.75}
+        ha-icon:not(.on){color:var(--disabled-text-color,#666);opacity:1}
         .sensor-value-wrapper ha-icon:not(.on),.sensor-value-wrapper .sensor-value-text{color:var(--disabled-text-color,#666)}
 
         /* ---------- DASHBOARD LAYOUT ------------------------------------------------- */
@@ -1124,25 +1172,10 @@ class HaDashboardSidebar extends LitElement {
         }
 
         .dashboard.horizontal:not(.collapsed)
-          .card.light {
-            width: 110px !important;
-            min-height: 10px;
-            height: auto;
-            max-height: none;
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center !important;
-            padding: 12px;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .dashboard.horizontal:not(.collapsed)
           .card.switch,
         .dashboard.horizontal:not(.collapsed)
           .card.button {
-            height: auto;
+            height: 100px;
             width: 110px !important;
             min-height: 80px;
             max-height: none;
@@ -1181,9 +1214,16 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.collapsed .custom-card,
         .dashboard.collapsed .light,
         .dashboard.collapsed .switch{
-          width:56px;height:56px;padding:8px;margin:0 auto;display:flex;align-items:center;justify-content:center;box-sizing:border-box
+            width: 56px;
+            min-height: 60px !important;
+            padding: 8px;
+            margin: 0px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            max-height: 60px !important;
         }
-
         /* person collapsed tweaks */
         .dashboard.collapsed .person{
           padding:8px;margin:0 auto;background:var(--card-background-color,rgba(255,255,255,.03));box-shadow:0 4px 10px rgba(0,0,0,.2);border-radius:16px;box-sizing:border-box
@@ -1196,8 +1236,8 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.horizontal.collapsed .person-info{display:none!important}
         .dashboard.collapsed .collapsed-clickable-box,
         .dashboard.horizontal.collapsed .collapsed-clickable-box {
-          width: 56px !important;
-          height: 56px !important;
+          width: 100% !important;
+          height: 100% !important;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1205,13 +1245,6 @@ class HaDashboardSidebar extends LitElement {
         }
         /* expand button rotazione orizzontale */
         .dashboard.horizontal .expand-button{writing-mode:vertical-rl;transform:rotate(180deg)}
-
-        /* ---------- CONTROL BUTTON --------------------------------------------------- */
-        .control-button{
-          background:var(--primary-color);color:var(--text-primary-color);border:none;border-radius:.6em;
-          width:2.4em;height:2.4em;display:flex;align-items:center;justify-content:center;
-          cursor:pointer;transition:.3s;font-size:1.2em
-        }
 
         .rgb-control-button {
           background:transparent;color:var(--text-primary-color);border:none;border-radius:.6em;
@@ -1223,19 +1256,51 @@ class HaDashboardSidebar extends LitElement {
           width:auto;height:30px;display:flex;align-items:center;justify-content:center;
           cursor:pointer;transition:.3s;font-size:1.2em
         }
-        .control-button:hover{filter:brightness(1.1)}
-        .control-button:active{transform:scale(.98)}
-        .control-button ha-icon{--mdc-icon-size:1.2em}
 
         .slider-container {
-          width: 100%;
-          margin: 10px auto;
+          width: 40px;
           display: flex;
-          flex-direction: column;
           align-items: center;
-          gap: 4px;
+          height: 100px;
+          justify-content: center;
+        }
+        /* riga principale dentro la light-card */
+        .light-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
         }
 
+        /* contiene tutte le slider-group in orizzontale */
+        .light-controls-row {
+          display: flex;
+          gap: 0;
+          height: 150px;
+          align-items: center;
+          justify-content: center;
+        }
+        .slider.brightness,
+        .slider.kelvin {
+          appearance: none;
+          width: 80px;
+          height: 6px;
+          border-radius: 4px;
+          background: var(--secondary-background-color);
+          outline: none;
+          cursor: pointer;
+          transform: rotate(-90deg);
+        }
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1 1 0%;
+        }
+        .slider-group .label {
+          font-size: 0.85rem;
+          text-align: center;
+        }
         .slider {
           -webkit-appearance: none;
           appearance: none;
@@ -1246,7 +1311,6 @@ class HaDashboardSidebar extends LitElement {
           outline: none;
           cursor: pointer;
         }
-
         .slider::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
@@ -1317,12 +1381,30 @@ class HaDashboardSidebar extends LitElement {
 
         /* ---------- CARD TIPI SPECIFICI (button/fan/cover/climate/media) ------------- */
         .card.button,
-        .card.light,
-        .card.fan,
-        .card.cover,
-        .card.climate,
-        .card.media-player{
-          padding:16px 10%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:1
+        .card.light {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 12px;
+            max-height: 90px;
+            min-height: 100px;
+            border-radius: 16px;
+            background: var(--card-background-color,rgba(255,255,255,.03));
+            border: 1px solid var(--divider-color,rgba(255,255,255,.05));
+            cursor: pointer;
+            transition: 0.3s;
+            color: var(--primary-text-color,#fff);
+            flex-shrink: 0;
+        }
+        .card.cover{
+          height: 100px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          z-index: 1;
+          width: auto;
         }
         .card.light .light-header {
           display: flex;
@@ -1347,17 +1429,12 @@ class HaDashboardSidebar extends LitElement {
         .card.switch .toggle-switch {
           margin: 0 auto !important;
         }
-
-        .card.button{gap:10px}
-        .card.button .value{text-align:center;width:100%;margin:0}
-        .card.button .control-button{align-self:center}
-
         /* ---------- SENSOR VALUE WRAPPERS ------------------------------------------- */
         .sensor-value-wrapper.collapsed-centered{
-          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
         }
         .sensor-value-wrapper.collapsed-centered ha-icon{font-size:24px}
-        .sensor-value-text{font-size:.9rem;font-weight:500;color:var(--primary-text-color,#fff)}
+        .sensor-value-text{text-overflow:ellipsis;overflow:hidden;display:flex;margin-bottom:5px;font-size:.9rem;font-weight:500;color:var(--primary-text-color,#fff),}
         .sensor-value-wrapper.expanded-right{
           display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;width:100%
         }
@@ -1548,7 +1625,389 @@ class HaDashboardSidebar extends LitElement {
           padding: 8px !important;
           gap: 12px !important;
         }
+        .cover-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        .cover-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+        }
+        .cover-status-row {
+          display: flex;
+          justify-content: space-between;
+          width: 100%;
+          margin-top: 4px;
+          gap: 8px;
+        }
 
+        .cover-percentage,
+        .cover-state {
+          font-size: 0.85rem;
+          color: var(--primary-text-color);
+          text-align: center;
+          flex: 1;
+        }
+
+        /* Gruppo slider + percentuale */
+        .cover-slider-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 5px;
+        }
+        .cover-slider-group .slider-container {
+          width: 100%;
+          height: 30px;
+        }
+        .cover-slider {
+          width: 100%;
+        }
+        .cover-percentage {
+          font-size: 0.85rem;
+          text-align: center;
+        }
+
+        /* Gruppo controlli */
+        .cover-control-group {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+        }
+        .cover-control-button {
+          /* qui puoi variare colori, size, margini */
+        }
+
+        .control-button {
+          background: var(--primary-color);
+          color: var(--text-primary-color);
+          border: none;
+          border-radius: .6em;
+          width: 2.4em;
+          height: 2.4em;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: .3s;
+        }
+        .control-button:hover {
+          filter: brightness(1.1);
+        }
+        .control-button:active {
+          transform: scale(.98);
+        }
+        /* layout principale: titolo a sinistra, controlli a destra */
+        .climate-layout {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        /* sinistra */
+        .climate-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          flex: 1;
+        }
+        .climate-controls {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          flex: 1;
+        }
+        .climate-current {
+          font-size: 1.25rem;
+          font-weight: 600;
+        }
+
+        /* pulsanti modalità */
+        .climate-modes {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .dash-button.climate-mode-button {
+          width: 36px;
+          height: 36px;
+          border: none;
+          border-radius: 10px;
+          background: transparent;
+          color: var(--text-primary-color, #fff);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .dash-button.climate-mode-button.active {
+          background: var(--primary-color);
+        }
+        .card.climate {
+            height: 125px;
+            width: auto;
+        }
+        /* slider */
+        .climate-slider-group {
+            gap: 14px;
+            align-items: center;
+            display: flex;
+            width: 100%;
+            margin-top: 19px;
+        }
+        .climate-temp-slider {
+          width: 100%;
+        }
+        .climate-target-label {
+          font-size: 0.85rem;
+        }
+        /* Container principale (se vuoi override generico) */
+        .card.media-player {
+            display: flex;
+            flex-direction: column;
+            height: 120px;
+            width: 180px;
+        }
+
+        /* Titolo / nome del dispositivo */
+        .mediaplayer-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          cursor: pointer; /* se vuoi gestire il click */
+        }
+
+        /* Sezione info traccia */
+        .mediaplayer-info {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .mediaplayer-info .track-name {
+          font-size: 0.95rem;
+          font-weight: 500;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+        .mediaplayer-info .track-artist {
+          font-size: 0.85rem;
+          opacity: 0.7;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        /* Bottoni play / pause / prev / next */
+        .mediaplayer-controls {
+          display: flex;
+          justify-content: center;
+          gap: 8px;
+        }
+        .mediaplayer-controls .dash-button {
+          width: 36px;
+          height: 36px;
+          border: none;
+          border-radius: 10px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          background: transparent;
+        }
+
+        /* Slider volume */
+        .mediaplayer-slider-container {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            height: 20px;
+            justify-content: center;
+            transform: rotate(-90deg);
+        }
+        .mediaplayer-layout {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            /* gap: 12px; */
+            width: 200px;
+        }
+        .mediaplayer-left {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .mediaplayer-right {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            width: 50px;
+        }
+        .mediaplayer-slider-container .slider {
+            width: 115px;
+        }
+        /* Container principale card fan */
+        .card.fan {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 12px;
+            max-height: 90px;
+            min-height: 100px;
+            border-radius: 16px;
+            background: var(--card-background-color,rgba(255,255,255,.03));
+            border: 1px solid var(--divider-color,rgba(255,255,255,.05));
+            cursor: pointer;
+            transition: 0.3s;
+            color: var(--primary-text-color,#fff);
+            flex-shrink: 0;
+        }
+        /* HEADER: nome + switch centrato */
+        .card.fan .fan-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .card.fan .fan-header .value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--primary-text-color);
+            text-align: center;
+            width: 100%;
+        }
+
+        /* TOGGLE SWITCH */
+        .fan_toggle-switch {
+          position: relative;
+          display: inline-block;
+          width: 40px;
+          height: 24px;
+          cursor: pointer;
+        }
+
+        .fan_toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .fan_toggle-slider {
+          position: absolute;
+          inset: 0;
+          background: var(--secondary-background-color);
+          transition: .4s;
+          border-radius: 24px;
+        }
+
+        .fan_toggle-slider::before {
+          content: "";
+          position: absolute;
+          width: 16px;
+          height: 16px;
+          left: 4px;
+          bottom: 4px;
+          background: #fff;
+          transition: .4s;
+          border-radius: 50%;
+        }
+
+        .fan_toggle-switch input:checked + .fan_toggle-slider {
+          background: var(--primary-color);
+        }
+
+        .fan_toggle-switch input:checked + .fan_toggle-slider::before {
+          transform: translateX(16px);
+        }
+        .fan-layout {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .fan-left {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          flex: 1;
+          width: 100px
+        }
+        .fan-slider-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            width: 67px;
+            height: 10px;
+            transform: rotate(-90deg);
+        }
+        .fan_label {
+          font-size: 0.85rem;
+          text-align: center;
+        }
+        /* SLIDER CONTAINER (visibile solo se acceso) */
+        .fan_slider-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          margin-top: 12px;
+        }
+
+        /* SLIDER */
+        .fan_slider {
+          width: 100%;
+          -webkit-appearance: none;
+          appearance: none;
+          height: 6px;
+          border-radius: 4px;
+          background: var(--secondary-background-color);
+          outline: none;
+          cursor: pointer;
+        }
+
+        .fan_slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          box-shadow: 0 0 4px var(--primary-color);
+          cursor: pointer;
+        }
+
+        .fan_slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          box-shadow: 0 0 4px var(--primary-color);
+          cursor: pointer;
+        }
+
+
+        .light_label {
+        }
+        .light-value {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            align-items: center;
+            gap: 8px;
+            color: var(--primary-text-color,#fff) display: -webkit-box;
+            -webkit-box-orient: horizontal;
+            overflow: hidden;
+            -webkit-line-clamp: 1;
+            text-overflow: ellipsis;
+            width: 100px;
+            white-space: nowrap;
+        }
     `;
   }
 
@@ -1596,68 +2055,73 @@ class HaDashboardSidebar extends LitElement {
     if (this._timeInterval) {
       clearInterval(this._timeInterval);
     }
+
     this._ghostMaps.forEach(m => m.remove());
     this._ghostMaps = [];
   }
-
-  _handleHoldAction(e, config) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const action = config.hold_action?.action;
-
-    if (!action) return;
-
-    switch (action) {
-      case 'toggle':
-        this.hass.callService(config.entity.split('.')[0], 'toggle', { entity_id: config.entity });
-        break;
-      case 'navigate':
-        if (config.hold_action?.navigation_path) {
-          window.location.href = config.hold_action.navigation_path;
-        }
-        break;
-      case 'call-service':
-        if (config.hold_action?.service) {
-          const [domain, service] = config.hold_action.service.split('.');
-          this.hass.callService(domain, service, config.hold_action.service_data || {});
-        }
-        break;
-      case 'more-info':
-      default:
-        this._showMoreInfo(config.entity);
-        break;
-    }
-  }
-
   _handleAction(e, config) {
     e.stopPropagation();
 
-    const action = config.tap_action?.action || 'more-info';
+    if (config.show_popup) {
+      console.log("[ACTION] show_popup attivo → apertura mini popup");
+      this._openMiniPopup(config);
+      return;
+    }
 
-    switch (action) {
+    const action = e.detail?.action || 'tap';
+    const actionKey = `${action}_action`;
+    const actionConfig = config[actionKey];
+
+    console.log(`[ACTION] Tipo: ${action} → config:`, actionConfig);
+
+    if (!actionConfig || actionConfig.action === 'none') {
+      console.warn("[ACTION] Nessuna azione configurata o action = 'none'");
+      return;
+    }
+
+    switch (actionConfig.action) {
       case 'toggle':
-        this.hass.callService(config.entity.split('.')[0], 'toggle', { entity_id: config.entity });
+        console.log("[ACTION] toggle", config.entity);
+        this.hass.callService(config.entity.split('.')[0], 'toggle', {
+          entity_id: config.entity
+        });
         break;
-      case 'navigate':
-        if (config.tap_action?.navigation_path) {
-          window.location.href = config.tap_action.navigation_path;
-        }
-        break;
+
+      case 'perform_action':
       case 'call-service':
-        if (config.tap_action?.service) {
-          const [domain, service] = config.tap_action.service.split('.');
-          this.hass.callService(domain, service, config.tap_action.service_data || {});
-        }
+        const [domain, service] = actionConfig.service.split('.');
+        const data = actionConfig.service_data || {};
+        if (data.entity_id === "entity") data.entity_id = config.entity;
+
+        console.log(`[ACTION] call-service → ${domain}.${service}`, {
+          ...data,
+          entity_id: data.entity_id || config.entity
+        });
+
+        this.hass.callService(domain, service, {
+          ...data,
+          entity_id: data.entity_id || config.entity
+        }, actionConfig.target);
         break;
+
+      case 'navigate':
+        console.log("[ACTION] navigate to", actionConfig.navigation_path);
+        window.location.href = actionConfig.navigation_path;
+        break;
+
+      case 'url':
+        console.log("[ACTION] open url", actionConfig.url_path);
+        window.open(actionConfig.url_path, '_blank');
+        break;
+
       case 'more-info':
       default:
-        const targetEntity = config.tap_action?.entity || config.entity;
-        this._showMoreInfo(targetEntity);
+        const entityId = actionConfig.entity || config.entity;
+        console.log("[ACTION] more-info su", entityId);
+        this._showMoreInfo(entityId);
         break;
     }
   }
-
 
   _updateTime() {
     this._timeInterval = setInterval(() => {
@@ -1956,7 +2420,7 @@ class HaDashboardSidebar extends LitElement {
 					<div class="card custom-card">
 						<div class="collapsed-clickable-box"
 								 tabindex="0"
-								 @click=${(e) => this._handleTapAction(e, entity)}
+								 @click=${(e) => this._handleAction(e, entity)}
 								 @contextmenu=${(e) => this._handleHoldAction(e, entity)}>
 							<div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
 						</div>
@@ -2015,10 +2479,9 @@ class HaDashboardSidebar extends LitElement {
       return html`
         <div class="card cover">
           <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
-               @click=${(e) => this._handleTapAction(e, config)}
-               @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+               @click=${e => this._handleAction(e, config)}
+               @contextmenu=${e => this._handleHoldAction(e, config)}>
             ${this._renderIcon(config, 'cover')}
           </div>
         </div>
@@ -2027,56 +2490,62 @@ class HaDashboardSidebar extends LitElement {
 
     return html`
       <div class="card cover">
-        <div class="value"
-             @click=${(e) => {
-               e.stopPropagation();
-               this._handleTapAction(e, config);
-             }}>
-          ${config.name || state.attributes.friendly_name}
+        <!-- Header: nome del dispositivo -->
+        <div class="cover-header">
+          <div class="cover-title">
+            ${config.name || state.attributes.friendly_name}
+          </div>
         </div>
 
-        <div class="label">${this._capitalize(state.state)}</div>
+        <!-- Slider + Riga: percentuale + stato -->
+        ${position !== undefined
+          ? html`
+              <div class="cover-slider-group">
+                <div class="slider-container">
+                  <input
+                    type="range"
+                    class="slider cover-slider"
+                    .value=${this._localPosition}
+                    @input=${e => (this._localPosition = +e.target.value)}
+                    @change=${e =>
+                      this._callService('cover', 'set_cover_position', config.entity, {
+                        position: +e.target.value,
+                      })}
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                </div>
 
-        <div class="cover-actions" style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: auto;">
-          <div class="button-row">
-            ${[
-              { icon: 'mdi:arrow-up',    action: 'open_cover'  },
-              { icon: 'mdi:stop',        action: 'stop_cover'  },
-              { icon: 'mdi:arrow-down',  action: 'close_cover' }
-            ].map(btn => html`
-              <button class="control-button"
-                      title="${btn.action}"
-                      @click=${(e) => {
-                        e.stopPropagation();
-                        this._callService('cover', btn.action, config.entity);
-                      }}>
+                <!-- Percentuale + Stato in riga -->
+                <div class="cover-status-row">
+                  <div class="cover-percentage">${this._localPosition}%</div>
+                  <div class="cover-state">${this._capitalize(state.state)}</div>
+                </div>
+              </div>
+            `
+          : ''}
+
+        <!-- Controlli -->
+        <div class="cover-control-group">
+          ${[
+            { icon: 'mdi:arrow-up', action: 'open_cover' },
+            { icon: 'mdi:stop', action: 'stop_cover' },
+            { icon: 'mdi:arrow-down', action: 'close_cover' },
+          ].map(
+            btn => html`
+              <button
+                class="control-button cover-control-button"
+                title="${btn.action}"
+                @click=${e => {
+                  e.stopPropagation();
+                  this._callService('cover', btn.action, config.entity);
+                }}
+              >
                 <ha-icon icon="${btn.icon}"></ha-icon>
               </button>
-            `)}
-          </div>
-
-          ${position !== undefined ? html`
-            <div class="slider-container">
-              <input
-                type="range"
-                class="slider"
-                .value=${this._localPosition}
-                @input=${e => this._localPosition = Number(e.target.value)}
-                @change=${e => this._callService(
-                  'cover',
-                  'set_cover_position',
-                  config.entity,
-                  { position: Number(e.target.value) }
-                )}
-                min="0"
-                max="100"
-                step="1"
-              />
-              <div class="label" style="text-align:center; margin-top: 4px;">
-                ${this._localPosition}%
-              </div>
-            </div>
-          ` : ''}
+            `
+          )}
         </div>
       </div>
     `;
@@ -2092,16 +2561,16 @@ class HaDashboardSidebar extends LitElement {
       hvac_modes,
       min_temp,
       max_temp,
-      temperature_unit
+      temperature_unit,
     } = state.attributes;
 
     const modeIcons = {
-      'off':      'mdi:power',
-      'heat':     'mdi:fire',
-      'cool':     'mdi:snowflake',
-      'auto':     'mdi:autorenew',
-      'dry':      'mdi:water-off',
-      'fan_only': 'mdi:fan'
+      off: 'mdi:power',
+      heat: 'mdi:fire',
+      cool: 'mdi:snowflake',
+      auto: 'mdi:autorenew',
+      dry: 'mdi:water-off',
+      fan_only: 'mdi:fan',
     };
 
     if (this._collapsed) {
@@ -2109,74 +2578,65 @@ class HaDashboardSidebar extends LitElement {
         <div class="card climate">
           <div class="collapsed-clickable-box"
                tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
+               @click=${e => this._handleAction(e, config)}
                @contextmenu=${e => this._handleHoldAction(e, config)}>
-            ${this._renderIcon(config, "climate")}
+            ${this._renderIcon(config, 'climate')}
           </div>
         </div>
       `;
     }
-
     return html`
       <div class="card climate">
-        <div class="value" @click=${e => e.stopPropagation()}>
-          ${current_temperature}°${temperature_unit}
-        </div>
-        <div class="label"
-             @click=${() => this._showMoreInfo(state.entity_id)}>
-          ${config.name || state.attributes.friendly_name}
-        </div>
-        <div class="climate-controls"
-             style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
-          <div class="button-row"
-               style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;">
-            ${hvac_modes?.map(mode => html`
-              <button
-                class="dash-button ${state.state === mode ? 'active' : ''}"
-                style="
-                  background:${state.state === mode ? 'var(--primary-color)' : '#727272'};
-                  color:var(--text-primary-color,#ffffff);
-                  border:none;border-radius:10px;padding:6px;
-                  width:36px;height:36px;display:inline-flex;
-                  align-items:center;justify-content:center;
-                  cursor:pointer;transition:all .3s ease;"
-                @click=${e => {
-                  e.stopPropagation();
-                  if (mode === 'off') {
-                    this._callService('climate', 'turn_off', config.entity);
-                  } else {
-                    this._callService('climate', 'set_hvac_mode', config.entity, {
-                      hvac_mode: mode
-                    });
-                  }
-                }}
-                title=${mode === 'off' ? 'Spegni' : this._capitalize(mode)}>
-                <ha-icon icon="${modeIcons[mode] || 'mdi:help-circle'}"></ha-icon>
-              </button>
-            `)}
-          </div>
+        <div class="climate-layout">
+          <div class="climate-controls">
+            <div class="climate-title">
+              ${config.name || state.attributes.friendly_name}
+            </div>
+            <div class="climate-current">
+              ${current_temperature}°${temperature_unit}
+            </div>
 
-          <div class="slider-container" style="margin-top:10px;width:100%;">
-            <input
-              type="range"
-              class="slider"
-              .value=${temperature}
-              min=${min_temp}
-              max=${max_temp}
-              step="0.5"
-              @input=${e => this._localTemperature = e.target.value}
-              @change=${e => this._callService('climate', 'set_temperature', config.entity, {
-                temperature: Number(e.target.value)
-              })}
-          </div>
+            <div class="climate-modes">
+              ${hvac_modes?.map(mode => html`
+                <button
+                  class="dash-button climate-mode-button ${state.state === mode ? 'active' : ''}"
+                  title=${mode === 'off' ? 'Spegni' : this._capitalize(mode)}
+                  @click=${e => {
+                    e.stopPropagation();
+                    const action = mode === 'off' ? 'turn_off' : 'set_hvac_mode';
+                    const data = mode === 'off' ? {} : { hvac_mode: mode };
+                    this._callService('climate', action, config.entity, data);
+                  }}
+                >
+                  <ha-icon icon="${modeIcons[mode] || 'mdi:help-circle'}"></ha-icon>
+                </button>
+              `)}
+            </div>
 
-          <div class="label" style="text-align:center;margin-top:4px;">
-            Target: ${temperature}°${temperature_unit}
+            <div class="climate-slider-group">
+              <input
+                type="range"
+                class="slider climate-temp-slider"
+                .value=${temperature}
+                min=${min_temp}
+                max=${max_temp}
+                step="0.5"
+                @input=${e => (this._localTemperature = e.target.value)}
+                @change=${e =>
+                  this._callService('climate', 'set_temperature', config.entity, {
+                    temperature: Number(e.target.value),
+                  })}
+              />
+              <div class="climate-target-label">
+                Target: ${temperature}°${temperature_unit}
+              </div>
+            </div>
           </div>
         </div>
       </div>
     `;
   }
+
 
 	_changeTemperature(entityId, delta) {
 		const state = this.hass.states[entityId];
@@ -2196,6 +2656,7 @@ class HaDashboardSidebar extends LitElement {
 		// invia comunque il comando a HA
 		this._callService('climate', 'set_temperature', entityId, { temperature:newTemp });
 	}
+
 /* ---------- RENDER LIGHT ---------- */
   _renderLight(config) {
     const state = this.hass.states[config.entity];
@@ -2222,26 +2683,24 @@ class HaDashboardSidebar extends LitElement {
     if (supportsKelvin && (this._localKelvin == null || !isOn)) {
       this._localKelvin = isOn ? state.attributes.color_temp_kelvin || 4000 : 4000;
     }
-
     if (this._collapsed) {
       return html`
-        <div class="card light${compact ? " compact" : ""}">
-          <div
-            class="collapsed-clickable-box"
-            tabindex="0"
-            @click=${e => this._handleTapAction(e, config)}
-            @contextmenu=${e => this._handleHoldAction(e, config)}
-          >
-            ${this._renderIcon(config, "light")}
-          </div>
+        <div class="card light"
+             tabindex="0"
+             role="button"
+             @action=${(e) => this._handleAction(e, config)}
+             @mousedown=${(e) => this._bindActionHandler(e.currentTarget, config)}
+             @mouseup=${(e) => this._bindActionHandler(e.currentTarget, config)}
+             @dblclick=${(e) => this._bindActionHandler(e.currentTarget, config)}
+             }}>
+          ${this._renderIcon(config, "light")}
         </div>
       `;
     }
-
     return html`
       <div class="card light${compact ? " compact" : ""}">
         <div class="light-header">
-          <div class="value" @click=${e => e.stopPropagation()}>
+          <div class="light-value" @click=${e => e.stopPropagation()}>
             ${config.name || state.attributes.friendly_name}
           </div>
           <label class="toggle-switch">
@@ -2258,62 +2717,65 @@ class HaDashboardSidebar extends LitElement {
             <span class="toggle-slider"></span>
           </label>
         </div>
-
         ${isOn && (supportsBrightness || supportsKelvin || supportsColor)
           ? html`
-              <div style="display:flex;flex-direction:column;gap:2px;width:100%;">
+              <div class="light-header">
+                <mwc-switch
+                  .checked=${isOn}
+                  @change=${()=> this._toggleLight(config.entity)}
+                ></mwc-switch>
+              </div>
+              <div class="light-controls-row">
                 ${supportsBrightness
                   ? html`
-                      <div class="slider-container" style="width:100%;">
-                        <input
-                          type="range"
-                          class="slider"
-                          .value=${this._localBrightness}
-                          @input=${e => (this._localBrightness = Number(e.target.value))}
-                          @change=${e =>
-                            this._callService("light", "turn_on", config.entity, {
-                              brightness_pct: Number(e.target.value),
-                            })}
-                        />
-                      </div>
-                      <div class="label" style="text-align:center;margin-top:4px;">
-                        ${this._localBrightness}%
+                      <div class="slider-group">
+                        <div class="slider-container">
+                          <input
+                            type="range"
+                            class="slider brightness"
+                            .value=${this._localBrightness}
+                            @input=${e => (this._localBrightness = +e.target.value)}
+                            @change=${e =>
+                              this._callService("light", "turn_on", config.entity, {
+                                brightness_pct: +e.target.value,
+                              })}
+                          />
+                        </div>
+                        <div class="light_label">${this._localBrightness}%</div>
                       </div>
                     `
                   : ""}
-
                 ${supportsKelvin
                   ? html`
-                      <div class="slider-container" style="width:100%;">
-                        <input
-                          type="range"
-                          class="slider"
-                          min="2000"
-                          max="6500"
-                          step="50"
-                          .value=${this._localKelvin}
-                          @input=${e => (this._localKelvin = Number(e.target.value))}
-                          @change=${e =>
-                            this._callService("light", "turn_on", config.entity, {
-                              kelvin: Number(e.target.value),
-                            })}
-                        />
-                      </div>
-                      <div class="label" style="text-align:center;margin-top:4px;">
-                        ${this._localKelvin} K
+                      <div class="slider-group">
+                        <div class="slider-container">
+                          <input
+                            type="range"
+                            class="slider kelvin"
+                            min="2000"
+                            max="6500"
+                            step="50"
+                            .value=${this._localKelvin}
+                            @input=${e => (this._localKelvin = +e.target.value)}
+                            @change=${e =>
+                              this._callService("light", "turn_on", config.entity, {
+                                kelvin: +e.target.value,
+                              })}
+                          />
+                        </div>
+                        <div class="light_label">${this._localKelvin}</div>
                       </div>
                     `
                   : ""}
-
                 ${supportsColor
                   ? html`
-                      <div class="rgb" style="justify-content:center;">
+                      <div class="rgb">
                         <button
                           class="rgb-control-button"
                           title="RGB picker"
                           @click=${() => this._showMoreInfo(config.entity)}
                         >
-                          🎨
+                          <ha-icon icon="mdi:dots-vertical"></ha-icon>
                         </button>
                       </div>
                     `
@@ -2323,6 +2785,17 @@ class HaDashboardSidebar extends LitElement {
           : ""}
       </div>
     `;
+  }
+  _bindActionHandler(el, config) {
+    if (el.__bound) return;
+    el.__bound = true;
+
+    bindActionHandler(el, {
+      hasHold: config.hold_action?.action !== 'none',
+      hasDoubleClick: config.double_tap_action?.action !== 'none'
+    });
+
+    el.addEventListener("action", (e) => this._handleAction(e, config));
   }
 
   /* ---------- RENDER SWITCH ---------- */
@@ -2340,7 +2813,7 @@ class HaDashboardSidebar extends LitElement {
               <div
                 class="collapsed-clickable-box"
                 tabindex="0"
-                @click=${e => this._handleTapAction(e, config)}
+                @click=${e => this._handleAction(e, config)}
                 @contextmenu=${e => this._handleHoldAction(e, config)}
               >
                 ${this._renderIcon(config, "switch")}
@@ -2385,7 +2858,7 @@ class HaDashboardSidebar extends LitElement {
           <div class="collapsed-clickable-box"
                class="centered-box"
                tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
+               @click=${e => this._handleAction(e, config)}
                @contextmenu=${e => this._handleHoldAction(e, config)}>
             ${this._renderIcon(config, domain)}
           </div>
@@ -2408,7 +2881,6 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
   _renderFan(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2423,10 +2895,12 @@ class HaDashboardSidebar extends LitElement {
     if (this._collapsed) {
       return html`
         <div class="card fan">
-          <div class="collapsed-clickable-box"
-               tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+          <div
+            class="collapsed-clickable-box"
+            tabindex="0"
+            @click=${e => this._handleAction(e, config)}
+            @contextmenu=${e => this._handleHoldAction(e, config)}
+          >
             ${this._renderIcon(config, "fan")}
           </div>
         </div>
@@ -2435,51 +2909,62 @@ class HaDashboardSidebar extends LitElement {
 
     return html`
       <div class="card fan">
-        <div class="value"
-             @click=${e => e.stopPropagation()}>
-          ${config.name || state.attributes.friendly_name}
-        </div>
-
-        <label class="toggle-switch" @click=${e => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            ?checked=${isOn}
-            @click=${e => e.stopPropagation()}
-            @change=${e => {
-              e.stopPropagation();
-              this._callService(
-                'fan',
-                isOn ? 'turn_off' : 'turn_on',
-                config.entity
-              );
-            }}>
-          <span class="toggle-slider"></span>
-        </label>
-
-        ${isOn ? html`
-          <div class="slider-container" style="margin-top:10px;width:100%;">
-            <input
-              type="range"
-              class="slider"
-              .value=${this._localFanSpeed}
-              @input=${e => this._localFanSpeed = Number(e.target.value)}
-              @change=${e => this._callService(
-                'fan',
-                'set_percentage',
-                config.entity,
-                { percentage: Number(e.target.value) }
-              )}
-              min="0"
-              max="100"
-              step="1">
-            <div class="label" style="text-align:center; margin-top:4px;">
-              ${this._localFanSpeed}%
+        <!-- Contenuto in riga: sinistra info, destra slider -->
+        <div class="fan-layout">
+          <!-- Sinistra: nome + switch -->
+          <div class="fan-left">
+            <div class="fan-header">
+              <div class="value">
+                ${config.name || state.attributes.friendly_name}
+              </div>
+              <label class="fan_toggle-switch" @click=${e => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  ?checked=${isOn}
+                  @click=${e => e.stopPropagation()}
+                  @change=${e => {
+                    e.stopPropagation();
+                    this._callService(
+                      'fan',
+                      isOn ? 'turn_off' : 'turn_on',
+                      config.entity
+                    );
+                  }}
+                />
+                <span class="fan_toggle-slider"></span>
+              </label>
             </div>
           </div>
-        ` : ''}
+
+          <!-- Destra: slider + percentuale -->
+          ${isOn
+            ? html`
+                <div class="fan-slider-column">
+                  <input
+                    type="range"
+                    class="fan_slider"
+                    .value=${this._localFanSpeed}
+                    @input=${e => (this._localFanSpeed = Number(e.target.value))}
+                    @change=${e =>
+                      this._callService(
+                        'fan',
+                        'set_percentage',
+                        config.entity,
+                        { percentage: Number(e.target.value) }
+                      )}
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                </div>
+                <div class="fan_label">${this._localFanSpeed}%</div>
+              `
+            : ''}
+        </div>
       </div>
     `;
   }
+
   _renderMediaPlayer(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2489,18 +2974,20 @@ class HaDashboardSidebar extends LitElement {
 
     const mediaControls = [
       { action: 'media_previous_track', icon: 'mdi:skip-previous' },
-      { action: 'media_play_pause', icon: isPlaying ? 'mdi:pause' : 'mdi:play' },
-      { action: 'media_next_track', icon: 'mdi:skip-next' }
+      { action: 'media_play_pause',    icon: isPlaying ? 'mdi:pause' : 'mdi:play' },
+      { action: 'media_next_track',    icon: 'mdi:skip-next' }
     ];
 
     if (this._collapsed) {
       return html`
         <div class="card media-player">
-          <div class="collapsed-clickable-box"
-               style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
-               tabindex="0"
-               @click=${e => this._handleTapAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+          <div
+            class="collapsed-clickable-box"
+            style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+            tabindex="0"
+            @click=${e => this._handleAction(e, config)}
+            @contextmenu=${e => this._handleHoldAction(e, config)}
+          >
             ${this._renderIcon(config, "media_player")}
           </div>
         </div>
@@ -2509,51 +2996,69 @@ class HaDashboardSidebar extends LitElement {
 
     return html`
       <div class="card media-player">
-        <div class="value"
-             @click=${e => {
-               e.stopPropagation();
-               this._handleTapAction(e, config);
-             }}>
-          ${config.name || state.attributes.friendly_name}
-        </div>
+        <!-- LAYOUT FLEX RIGA: sinistra testo + controlli, destra slider -->
+        <div class="mediaplayer-layout">
+          <div class="mediaplayer-left">
+            <!-- Titolo -->
+            <div
+              class="value mediaplayer-title"
+              @click=${e => {
+                e.stopPropagation();
+                this._handleAction(e, config);
+              }}
+            >
+              ${config.name || state.attributes.friendly_name}
+            </div>
 
-        <div class="media-info">
-          <div class="track-name">${state.attributes.media_title || 'Nessuna traccia in riproduzione'}</div>
-          <div class="track-artist">${state.attributes.media_artist || ''}</div>
-        </div>
+            <!-- Info traccia -->
+            <div class="media-info mediaplayer-info">
+              <div class="track-name">
+                ${state.attributes.media_title || 'Nessuna traccia in riproduzione'}
+              </div>
+              <div class="track-artist">
+                ${state.attributes.media_artist || ''}
+              </div>
+            </div>
 
-        <div class="media-controls"
-             style="display:flex;justify-content:center;gap:8px;margin-top:12px;">
-          ${mediaControls.map(control => html`
-            <button class="dash-button"
-                    style="
-                      background:var(--primary-color);
-                      color:var(--text-primary-color,#ffffff);
-                      border:none;border-radius:10px;padding:8px;
-                      width:36px;height:36px;display:inline-flex;
-                      align-items:center;justify-content:center;
-                      cursor:pointer;transition:all .3s ease;"
-                    @click=${e => {
-                      e.stopPropagation();
-                      this._callService('media_player', control.action, config.entity);
-                    }}>
-              <ha-icon icon="${control.icon}"></ha-icon>
-            </button>
-          `)}
-        </div>
-
-        <div class="slider-container" style="margin-top:10px;width:100%;">
-          <input type="range"
-                 class="slider"
-                 .value=${volume * 100}
-                 min="0" max="100" step="1"
-                 @change=${e => this._callService(
-                   'media_player', 'volume_set', config.entity,
-                   { volume_level: Number(e.target.value) / 100 })}>
+            <!-- Controlli -->
+            <div class="media-controls mediaplayer-controls">
+              ${mediaControls.map(control => html`
+                <button
+                  class="dash-button"
+                  @click=${e => {
+                    e.stopPropagation();
+                    this._callService('media_player', control.action, config.entity);
+                  }}
+                  title=${control.action}
+                >
+                  <ha-icon icon=${control.icon}></ha-icon>
+                </button>
+              `)}
+            </div>
+          </div>
+          <div class="mediaplayer-right">
+            <div class="slider-container mediaplayer-slider-container">
+              <input
+                type="range"
+                class="slider"
+                .value=${volume * 100}
+                min="0"
+                max="100"
+                step="1"
+                @change=${e => this._callService(
+                  'media_player',
+                  'volume_set',
+                  config.entity,
+                  { volume_level: Number(e.target.value) / 100 }
+                )}
+              />
+            </div>
+          </div>
         </div>
       </div>
     `;
   }
+
 
   _renderSensor(config) {
     const state = this.hass.states[config.entity];
@@ -2617,7 +3122,7 @@ class HaDashboardSidebar extends LitElement {
           <div class="collapsed-clickable-box"
                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
-               @click=${(e) => this._handleTapAction(e, config)}
+               @click=${(e) => this._handleAction(e, config)}
                @contextmenu=${(e) => this._handleHoldAction(e, config)}>
             <div class="weather-icon ${weatherIcon.animation}">
               ${weatherIcon.icon}
@@ -2828,20 +3333,24 @@ class HaDashboardSidebar extends LitElement {
       entities: config.entities.map(e => ({
         ...e,
         tracker_entity: e.tracker_entity || null,
+        tap_action: e.tap_action || { action: "more-info" },
+        hold_action: e.hold_action || { action: "none" },
+        double_tap_action: e.double_tap_action || { action: "none" },
+        show_popup: e.show_popup || false, // ✅ Aggiunto qui nella card
       }))
     };
 
     this.cards = config.cards || [];
 
-    // ✅ Legge il valore start_expanded e imposta collapsed al contrario
     this._collapsed = config.hasOwnProperty('collapsed')
       ? config.collapsed
       : !(config.start_expanded === true);
 
-    // ✅ Memorizza dimensioni se presenti
     this._configuredWidth  = config.width  || null;
     this._configuredHeight = config.height || null;
   }
+
+
 
   render() {
     if (!this.hass || !this.config) return html``;
