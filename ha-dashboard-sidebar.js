@@ -567,7 +567,7 @@ class HaDashboardSidebarEditor extends LitElement {
         <div class="column">
           ${ent.type !== "custom_card"
             ? html`
-                <div class="row" style="gap: 12px;">
+                <div class="column" style="gap: 12px;">
                   <div style="flex: 2;min-width: 20px;">
                     <div class="field-label">Entity</div>
                     <ha-selector class="full" .hass=${this.hass}
@@ -577,7 +577,7 @@ class HaDashboardSidebarEditor extends LitElement {
                     </ha-selector>
                   </div>
 
-                  <div style="flex: 2;min-width: 20px;">
+                  <div style="flex: 2;min-width: 20px;max-width:150px;">
                     <div class="field-label">Collapsed</div>
                     <ha-selector class="full" .hass=${this.hass}
                       .selector=${{
@@ -630,6 +630,25 @@ class HaDashboardSidebarEditor extends LitElement {
                   const updated = { ...(ent.tap_action || { action: "more-info" }) };
                   updated.entity = e.detail.value;
                   this._row(i, "tap_action", updated);
+                }}>
+              </ha-selector>
+            ` : ""}
+            <!-- Hold Action -->
+            <div class="field-label">Hold Action</div>
+            <ha-selector class="full" .hass=${this.hass}
+              .selector=${{ ui_action: {} }}
+              .value=${ent.hold_action || { action: "none" }}
+              @value-changed=${e => this._row(i, "hold_action", e.detail.value)}>
+            </ha-selector>
+            ${ent.hold_action?.action === "more-info" ? html`
+              <div class="field-label">Show entity (optional)</div>
+              <ha-selector class="full" .hass=${this.hass}
+                .selector=${{ entity: {} }}
+                .value=${ent.hold_action.entity || ""}
+                @value-changed=${e => {
+                  const updated = { ...(ent.hold_action || { action: "more-info" }) };
+                  updated.entity = e.detail.value;
+                  this._row(i, "hold_action", updated);
                 }}>
               </ha-selector>
             ` : ""}
@@ -857,28 +876,40 @@ class HaDashboardSidebar extends LitElement {
   }
   updated(changedProps) {
     super.updated(changedProps);
-    if(changedProps.has('hass')) {
-      this.config.entities.forEach(entity => {
+    if (changedProps.has("hass")) {
+      this.config.entities.forEach((entity) => {
         const state = this.hass.states[entity.entity];
-        if(!state) return;
+        if (!state) return;
 
-        switch(entity.entity.split('.')[0]) {
-          case 'climate':
-            this._localTemp = state.attributes.temperature || 20;
+        switch (entity.entity.split(".")[0]) {
+          case "climate":
+            const temp = state.attributes.temperature ?? 20;
+            if (this._localTemp !== temp) {
+              this._localTemp = temp;
+            }
             break;
-          case 'media_player':
+          case "media_player":
             this._localVolume = (state.attributes.volume_level || 0) * 100;
             break;
-          case 'cover':
+          case "cover":
             this._localPosition = state.attributes.current_position || 0;
             break;
-          case 'fan':
+          case "fan":
             this._localFanSpeed = state.attributes.percentage || 0;
+            break;
+          case "light":
+            if ("brightness" in state.attributes) {
+              this._localBrightness = Math.round((state.attributes.brightness / 255) * 100);
+            }
+            if ("color_temp_kelvin" in state.attributes) {
+              this._localKelvin = state.attributes.color_temp_kelvin;
+            }
             break;
         }
       });
     }
   }
+
   static async getStubConfig(hass) {
     return {
       type: 'custom:ha-dashboard-sidebar',
@@ -2059,6 +2090,17 @@ class HaDashboardSidebar extends LitElement {
     this._ghostMaps.forEach(m => m.remove());
     this._ghostMaps = [];
   }
+  _bindActionHandler(el, config) {
+    if (el.__bound) return;
+    el.__bound = true;
+
+    bindActionHandler(el, {
+      hasHold: config.hold_action?.action !== 'none',
+      hasDoubleClick: config.double_tap_action?.action !== 'none'
+    });
+
+    el.addEventListener("action", (e) => this._handleAction(e, config));
+  }
   _handleAction(e, config) {
     e.stopPropagation();
 
@@ -2550,19 +2592,19 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
   _renderClimate(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
 
     const {
-      temperature,
       current_temperature,
       hvac_modes,
       min_temp,
       max_temp,
       temperature_unit,
     } = state.attributes;
+
+    const targetTemp = this._localTemp ?? state.attributes.temperature ?? 20;
 
     const modeIcons = {
       off: 'mdi:power',
@@ -2578,13 +2620,14 @@ class HaDashboardSidebar extends LitElement {
         <div class="card climate">
           <div class="collapsed-clickable-box"
                tabindex="0"
-               @click=${e => this._handleAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+               @action=${(e) => this._handleAction(e, config)}
+               @mousedown=${(e) => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, 'climate')}
           </div>
         </div>
       `;
     }
+
     return html`
       <div class="card climate">
         <div class="climate-layout">
@@ -2617,18 +2660,18 @@ class HaDashboardSidebar extends LitElement {
               <input
                 type="range"
                 class="slider climate-temp-slider"
-                .value=${temperature}
+                .value=${targetTemp}
                 min=${min_temp}
                 max=${max_temp}
                 step="0.5"
-                @input=${e => (this._localTemperature = e.target.value)}
+                @input=${e => (this._localTemp = +e.target.value)}
                 @change=${e =>
                   this._callService('climate', 'set_temperature', config.entity, {
                     temperature: Number(e.target.value),
                   })}
               />
               <div class="climate-target-label">
-                Target: ${temperature}°${temperature_unit}
+                Target: ${targetTemp}°${temperature_unit}
               </div>
             </div>
           </div>
@@ -2636,7 +2679,6 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
 
 	_changeTemperature(entityId, delta) {
 		const state = this.hass.states[entityId];
@@ -2786,17 +2828,6 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-  _bindActionHandler(el, config) {
-    if (el.__bound) return;
-    el.__bound = true;
-
-    bindActionHandler(el, {
-      hasHold: config.hold_action?.action !== 'none',
-      hasDoubleClick: config.double_tap_action?.action !== 'none'
-    });
-
-    el.addEventListener("action", (e) => this._handleAction(e, config));
-  }
 
   /* ---------- RENDER SWITCH ---------- */
   _renderSwitch(config) {
@@ -2843,7 +2874,6 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
   _renderButton(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2852,14 +2882,18 @@ class HaDashboardSidebar extends LitElement {
     const name = config.name || state.attributes.friendly_name;
     const service = domain === 'script' ? 'turn_on' : 'press';
 
+    const hasCustomAction = (
+      (config.tap_action?.action && config.tap_action.action !== "none") ||
+      (config.hold_action?.action && config.hold_action.action !== "none")
+    );
+
     if (this._collapsed) {
       return html`
         <div class="card button">
           <div class="collapsed-clickable-box"
-               class="centered-box"
                tabindex="0"
-               @click=${e => this._handleAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+               @action=${(e) => this._handleAction(e, config)}
+               @mousedown=${(e) => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, domain)}
           </div>
         </div>
@@ -2874,13 +2908,18 @@ class HaDashboardSidebar extends LitElement {
         <button class="control-button"
                 @click=${e => {
                   e.stopPropagation();
-                  this._callService(domain, service, config.entity);
+                  if (hasCustomAction) {
+                    this._handleAction({ detail: { action: "button.press" }, stopPropagation: () => {} }, config);
+                  } else {
+                    this._callService(domain, service, config.entity);
+                  }
                 }}>
           <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
         </button>
       </div>
     `;
   }
+
   _renderFan(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -3257,57 +3296,6 @@ class HaDashboardSidebar extends LitElement {
       ></ha-icon>
     `;
   }
-  _handleTapAction(e, config) {
-    e.stopPropagation();
-
-    const domain = config.entity?.split('.')[0];
-
-    // ── Se sidebar collassata E mini-popup NON già aperto → apri popup
-    if (this._collapsed && !this._miniEntity) {
-      const popupAllowed = [
-        'light', 'switch', 'climate',
-        'cover', 'fan', 'media_player', 'sensor'
-      ];
-      if (popupAllowed.includes(domain) || config.type === 'custom_card') {
-        const x = e.touches?.[0]?.clientX || e.clientX;
-        const y = e.touches?.[0]?.clientY || e.clientY;
-        this._openMiniPopup(config, x, y);
-        return;
-      }
-    }
-    let action = config.tap_action?.action;
-    if (!action) {
-      action = (domain === 'light' || domain === 'switch')
-        ? 'toggle'
-        : 'more-info';
-    }
-
-    switch (action) {
-      case 'toggle':
-        this.hass.callService(domain, 'toggle', { entity_id: config.entity });
-        break;
-
-      case 'navigate':
-        if (config.tap_action?.navigation_path) {
-          window.location.href = config.tap_action.navigation_path;
-        }
-        break;
-
-      case 'call-service':
-        if (config.tap_action?.service) {
-          const [svcDomain, svc] = config.tap_action.service.split('.');
-          this.hass.callService(svcDomain, svc, config.tap_action.service_data || {});
-        }
-        break;
-
-      case 'more-info':
-      default:
-        const entityId = config.tap_action?.entity || config.entity;
-        this._showMoreInfo(entityId);
-        break;
-    }
-  }
-
   _parseTitle(title) {
     if (!title) return "";
 
