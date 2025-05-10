@@ -256,7 +256,7 @@ entities:
   - type: person
     entity: person.lorenzo
     tracker_entity: device_tracker.lorenzo
-  - type: power
+  - type: sensor
     name: Power Consumption
     entity: sensor.home_power
   - type: sensor
