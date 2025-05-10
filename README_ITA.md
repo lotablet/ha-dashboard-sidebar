@@ -253,7 +253,7 @@ entities:
   - type: person
     entity: person.lorenzo
     tracker_entity: device_tracker.lorenzo_telefono
-  - type: power
+  - type: sensor
     name: Consumo
     entity: sensor.casa_power
   - type: sensor
