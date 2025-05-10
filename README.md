@@ -28,7 +28,7 @@ To manually install this card, follow these steps:
    ```
    /local/community/ha-dashboard-sidebar/ha-dashboard-sidebar.js
    ```
-6. Once the resource is added, restart Home Assistant to load the card.
+6. Once the resource is added, reload Home Assistant to load the card (reset cache if needed)
 
 At this point, the card will be available for use in your dashboard.
 
