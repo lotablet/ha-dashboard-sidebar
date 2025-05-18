@@ -786,8 +786,9 @@ class HaDashboardSidebar extends LitElement {
       _editingText: { type: String },
       _localVolume: { type: Number },
       _localPosition: { type: Number },
-      _localTemp:  { type: Number },
       _localFanSpeed: { type: Number },
+      _optimisticTemp: { type: Number, state: true },
+      _optimisticUntil: { type: Number, state: true },
       _miniEntity: { type: Object },
       _miniPos: { type: Object },
     };
@@ -805,8 +806,10 @@ class HaDashboardSidebar extends LitElement {
     this._localVolume = 0;
     this._localPosition = 0;
     this._localFanSpeed = 0;
-    this._localTemp = 0;
     this._expandContent = false;
+    this._pendingTemp = undefined;
+    this._optimisticTemp = undefined;
+    this._optimisticUntil = 0;
     this._weatherIcons = {
       'clear-night': {
         icon: '🌙',
@@ -874,6 +877,31 @@ class HaDashboardSidebar extends LitElement {
     this._expandContent = !this._expandContent;
     this.requestUpdate();
   }
+  updated() {
+    const entityId = this._config?.entity || this.config?.entity;
+    if (!entityId || !this.hass) return;
+
+    const state = this.hass.states[entityId];
+    if (!state) return;
+
+    const actualTemp = state.attributes.temperature;
+
+    // Se Home Assistant ha aggiornato, resetta
+    if (this._optimisticTemp !== undefined && actualTemp === this._optimisticTemp) {
+      this._optimisticTemp = undefined;
+      this._optimisticUntil = 0;
+      this.requestUpdate();
+    }
+
+    // Se è passato troppo tempo, resetta forzatamente
+    if (this._optimisticUntil && Date.now() > this._optimisticUntil) {
+      this._optimisticTemp = undefined;
+      this._optimisticUntil = 0;
+      this.requestUpdate();
+    }
+  }
+
+
   updated(changedProps) {
     super.updated(changedProps);
     if (changedProps.has("hass")) {
@@ -883,10 +911,6 @@ class HaDashboardSidebar extends LitElement {
 
         switch (entity.entity.split(".")[0]) {
           case "climate":
-            const temp = state.attributes.temperature ?? 20;
-            if (this._localTemp !== temp) {
-              this._localTemp = temp;
-            }
             break;
           case "media_player":
             this._localVolume = (state.attributes.volume_level || 0) * 100;
@@ -1104,8 +1128,15 @@ class HaDashboardSidebar extends LitElement {
           content:"";position:absolute;top:12px;left:-8px;border-width:8px;border-style:solid;
           border-color:transparent var(--card-background-color,#1a1b1e) transparent transparent
         }
-        .mini-popup .mini-close{
-          position:absolute;top:8px;right:8px;font-size:1.2em;color:var(--primary-text-color);cursor:pointer;z-index:10;user-select:none
+        .mini-popup .mini-close {
+            position: absolute;
+            top: -16px;
+            right: -15px;
+            color: var(--primary-text-color);
+            cursor: pointer;
+            z-index: 10;
+            user-select: none;
+            --mdc-icon-size: 27px;
         }
         .mini-popup .mini-close:hover{color:var(--primary-color)}
 
@@ -1428,7 +1459,7 @@ class HaDashboardSidebar extends LitElement {
             flex-shrink: 0;
         }
         .card.cover{
-          height: 100px;
+          height: 130px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -1526,27 +1557,7 @@ class HaDashboardSidebar extends LitElement {
         }
         .map-container ha-map{width:100%!important;height:100%!important;display:block}
 
-        /* ---------- MINI‑POPUP SPECIFIC SIZE PER TIPI -------------------------------- */
-        .mini-popup .fan,
-        .mini-popup .cover,
-        .mini-popup .media-player{width:200px!important;height:200px!important;flex-shrink:0}
-        .mini-popup .sensor{width:180px!important;height:180px!important;flex-shrink:0}
-        .mini-popup .card.light,{
-          width:260px;padding:16px;padding-bottom:32px;box-sizing:border-box;overflow:visible
-        }
-        .mini-popup .card.light .label{font-size:1rem;height:20px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .mini-popup .card.light .button-row{justify-content:center;margin-top:12px}
-        .mini-popup .switch {
-          width: 90%;
-          padding: 16px;
-          text-align: center;
-          align-self: center;
-        }
-        .mini-popup .card.climate{width:300px}
-        .mini-popup .card.climate .button-row button{width:40px;height:40px;font-size:1.2rem;margin:0 4px}
-        .mini-popup .card.climate .label:last-of-type{
-          font-size:.9rem;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;width:100%;display:block
-        }
+
         .mini-popup .card{background:var(--card-background-color);border:1px solid var(--divider-color);box-shadow:var(--ha-card-box-shadow);border-radius:var(--ha-card-border-radius);padding:12px;overflow:visible!important}
         .mini-popup .content{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:auto!important;max-width:90vw!important}
         .mini-popup ha-card{width:auto!important}
@@ -1716,7 +1727,7 @@ class HaDashboardSidebar extends LitElement {
           background: var(--primary-color);
           color: var(--text-primary-color);
           border: none;
-          border-radius: .6em;
+          border-radius: 50%;
           width: 2.4em;
           height: 2.4em;
           display: flex;
@@ -1778,7 +1789,7 @@ class HaDashboardSidebar extends LitElement {
           background: var(--primary-color);
         }
         .card.climate {
-            height: 125px;
+            height: 130px;
             width: auto;
         }
         /* slider */
@@ -1795,14 +1806,22 @@ class HaDashboardSidebar extends LitElement {
         .climate-target-label {
           font-size: 0.85rem;
         }
+        .climate-temp-slider::-webkit-slider-thumb {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--primary-color, #888);
+          cursor: pointer;
+        }
         /* Container principale (se vuoi override generico) */
         .card.media-player {
             display: flex;
             flex-direction: column;
-            height: 120px;
-            width: 180px;
+            justify-content: center;
+            height: 130px;
+            align-items: center;
         }
-
         /* Titolo / nome del dispositivo */
         .mediaplayer-title {
           font-size: 1rem;
@@ -1886,9 +1905,9 @@ class HaDashboardSidebar extends LitElement {
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 12px;
-            max-height: 90px;
-            min-height: 100px;
+            /* padding: 12px; */
+            /* max-height: 90px; */
+            height: 130px;
             border-radius: 16px;
             background: var(--card-background-color,rgba(255,255,255,.03));
             border: 1px solid var(--divider-color,rgba(255,255,255,.05));
@@ -2041,8 +2060,6 @@ class HaDashboardSidebar extends LitElement {
         }
     `;
   }
-
-
   async _createCustomCard(entity) {
     if (!entity || !entity.card) return;
 
@@ -2604,7 +2621,12 @@ class HaDashboardSidebar extends LitElement {
       temperature_unit,
     } = state.attributes;
 
-    const targetTemp = this._localTemp ?? state.attributes.temperature ?? 20;
+    const actualTemp = state.attributes.temperature ?? 20;
+    const targetTemp = (this._optimisticTemp !== undefined && Date.now() < this._optimisticUntil)
+      ? this._optimisticTemp
+      : actualTemp;
+
+    const isOptimistic = this._optimisticTemp !== undefined && Date.now() < this._optimisticUntil;
 
     const modeIcons = {
       off: 'mdi:power',
@@ -2655,7 +2677,6 @@ class HaDashboardSidebar extends LitElement {
                 </button>
               `)}
             </div>
-
             <div class="climate-slider-group">
               <input
                 type="range"
@@ -2664,13 +2685,23 @@ class HaDashboardSidebar extends LitElement {
                 min=${min_temp}
                 max=${max_temp}
                 step="0.5"
-                @input=${e => (this._localTemp = +e.target.value)}
-                @change=${e =>
+                @input=${e => {
+                  const val = +e.target.value;
+                  this._optimisticTemp = val;
+                  this._optimisticUntil = Date.now() + 8000;
+                  this.requestUpdate();
+                }}
+                @change=${e => {
+                  const val = +e.target.value;
                   this._callService('climate', 'set_temperature', config.entity, {
-                    temperature: Number(e.target.value),
-                  })}
+                    temperature: val,
+                  });
+                }}
               />
-              <div class="climate-target-label">
+              <div
+                class="climate-target-label"
+                style=${isOptimistic ? 'color: red;' : ''}
+              >
                 Target: ${targetTemp}°${temperature_unit}
               </div>
             </div>
@@ -2680,24 +2711,30 @@ class HaDashboardSidebar extends LitElement {
     `;
   }
 
-	_changeTemperature(entityId, delta) {
-		const state = this.hass.states[entityId];
-		if (!state) return;
+  _changeTemperature(entityId, delta) {
+    const state = this.hass.states[entityId];
+    if (!state) return;
 
-		if (this._localTemp == null) {
-			this._localTemp = state.attributes.temperature || 20;
-		}
+    const current = state.attributes.temperature ?? 20;
+    const min = state.attributes.min_temp ?? 7;
+    const max = state.attributes.max_temp ?? 35;
 
-		let newTemp = this._localTemp + delta;
-		const min   = state.attributes.min_temp || 7;
-		const max   = state.attributes.max_temp || 35;
+    let newTemp = this._pendingTemp ?? this._optimisticTemp ?? current;
+    newTemp = Math.max(min, Math.min(max, newTemp + delta));
 
-		newTemp          = Math.max(min, Math.min(max, newTemp));
-		this._localTemp  = newTemp;		// aggiorna subito la variabile locale
+    // Aggiorna localmente per l'interfaccia
+    this._pendingTemp = newTemp;
+    this._optimisticTemp = newTemp;
+    this._optimisticUntil = Date.now() + 8000;
 
-		// invia comunque il comando a HA
-		this._callService('climate', 'set_temperature', entityId, { temperature:newTemp });
-	}
+    this.requestUpdate();
+
+    // Invia a Home Assistant
+    this._callService('climate', 'set_temperature', entityId, {
+      temperature: newTemp
+    });
+  }
+
 
 /* ---------- RENDER LIGHT ---------- */
   _renderLight(config) {
@@ -3430,7 +3467,7 @@ class HaDashboardSidebar extends LitElement {
               <div class="mini-popup"
                    @click=${e => e.stopPropagation()}
                    style="top:${this._miniPos?.y}px; left:${this._miniPos?.x}px;">
-                <span class="mini-close" @click=${this._closeMiniPopup}>×</span>
+                <ha-icon class="mini-close" icon="mdi:close-circle-outline" @click=${this._closeMiniPopup}></ha-icon>
                 ${this._renderEntityExpanded(this._miniEntity)}
               </div>
             </div>` : ''}
