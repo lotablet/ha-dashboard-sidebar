@@ -3503,7 +3503,7 @@ class HaDashboardSidebar extends LitElement {
     };
   }
 }
-console.log(`HA Dashboard Sidebar v1 beta`);
+console.log(`Hello from HA Dashboard Sidebar :) `);
 customElements.define("ha-dashboard-sidebar", HaDashboardSidebar);
 window.customCards = window.customCards || [];
 window.customCards.push({
