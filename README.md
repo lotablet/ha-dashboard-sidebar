@@ -3,7 +3,7 @@
 
 
 # 📘 `ha-dashboard-sidebar` for Home Assistant
-![version](https://img.shields.io/badge/version-1.0.3-blue)
+![version](https://img.shields.io/badge/version-1.0.7-blue)
 ![hacs](https://img.shields.io/badge/HACS-default-orange)
 
 This guide describes **all available features** for the `ha-dashboard-sidebar` custom card, compatible with Lovelace in Home Assistant.
