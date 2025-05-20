@@ -1127,18 +1127,29 @@ class HaDashboardSidebar extends LitElement {
         /* ---------- MINI‑POPUP ------------------------------------------------------- */
         .mini-popup {
             position: absolute;
-            top: 50%!important;
-            left: 50%!important;
-            transform: translate(-50%,-50%)!important;
+            background: transparent;
             border-radius: 24px;
-            z-index: 9999;
+            z-index: 9000;
             padding: 10px;
-            overflow: visible!important;
             display: flex;
             justify-content: center;
             align-items: center;
-            animation: popup-appear .3s ease forwards;
+            animation: 0.3s ease 0s 1 normal forwards running popup-appear;
             margin: 15px;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            overflow: visible !important;
+        }
+        .mini-popup::after {
+        	/* content: ""; */
+        	/* position: absolute; */
+        	/* top: 12px; */
+        	/* left: -8px; */
+        	/* border-width: 8px; */
+        	/* border-style: solid; */
+        	/* border-color: transparent var(--card-background-color,#1a1b1e) transparent transparent; */
+        	display: none;
         }
         .mini-popup .mini-close {
         	position: relative;
@@ -2235,13 +2246,21 @@ class HaDashboardSidebar extends LitElement {
       };
       window.addEventListener('click', onClickAway, { once: true });
   }
+  async _renderEntityExpanded(entity) {
+    const clone = { ...entity, collapsed: false };
 
+    if (clone.type === 'custom_card' && clone.card?.type) {
+      const helpers = await window.loadCardHelpers?.();
+      const el = await helpers.createCardElement(clone.card);
+      el.hass = this.hass;
+      el.setConfig?.(clone.card);
+      return el;
+    }
 
-  _renderEntityExpanded(entity) {
     const prev = this._collapsed;
-    this._collapsed = false;                // forza expanded
-    const tpl  = this._renderEntity(entity);
-    this._collapsed = prev;                 // ripristina
+    this._collapsed = false;
+    const tpl = this._renderEntity(clone);
+    this._collapsed = prev;
     return tpl;
   }
   _closeMiniPopup() {
@@ -3477,17 +3496,20 @@ class HaDashboardSidebar extends LitElement {
             <div class="mini-overlay" @click=${this._closeMiniPopup}>
               <div class="mini-popup"
                    @click=${e => e.stopPropagation()}
-                   >
-                <ha-icon class="mini-close" icon="mdi:close-circle-outline" @click=${this._closeMiniPopup}></ha-icon>
-                ${this._renderEntityExpanded(this._miniEntity)}
+                   style="top:${this._miniPos?.y}px; left:${this._miniPos?.x}px;">
+                <div class="mini-popup-header">
+                  <ha-icon class="mini-close" icon="mdi:close-circle-outline" @click=${this._closeMiniPopup}></ha-icon>
+                </div>
+                <div class="mini-popup-content">
+                  ${until(this._renderEntityExpanded(this._miniEntity), html`<div>Caricamento...</div>`)}
+                </div>
               </div>
-            </div>` : ''}
+            </div>
+          ` : ''}
         </ha-card>
       </div>
     `;
   }
-
-
   static get configSchema() {
     return {
       type: "object",
