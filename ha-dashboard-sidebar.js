@@ -605,13 +605,41 @@ class HaDashboardSidebarEditor extends LitElement {
                   </div>
                 </div>`
             : html`
-                <mwc-button class="yaml"
-                  title="For complex cards, build it outside and paste it in YAML mode."
-                  @click=${() => this._openCardPicker(i)}>
-                  Select Card (YAML editor not available yet)
-                </mwc-button>`
-          }
+                <div class="column" style="gap: 12px;">
+                  <mwc-button class="yaml"
+                    title="For complex cards, build it outside and paste it in YAML mode."
+                    @click=${() => this._openCardPicker(i)}>
+                    Select Card (YAML editor not available yet)
+                  </mwc-button>
 
+                  <div style="flex: 2;min-width: 20px;max-width:150px;">
+                    <div class="field-label">Collapsed</div>
+                    <ha-selector class="full" .hass=${this.hass}
+                      .selector=${{
+                        select: {
+                          mode: "dropdown",
+                          options: [
+                            { value: "none", label: "None" },
+                            { value: "true", label: "True" },
+                            { value: "false", label: "False" }
+                          ]
+                        }
+                      }}
+                      .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
+                      @value-changed=${e => {
+                        const ents = [...this._config.entities];
+                        const val = e.detail.value;
+                        if (val === "none") {
+                          delete ents[i].collapsed;
+                        } else {
+                          ents[i].collapsed = val === "true";
+                        }
+                        this._push("entities", ents);
+                      }}>
+                    </ha-selector>
+                  </div>
+                </div>`
+          }
           <details class="expander">
             <summary><ha-icon icon="mdi:gesture-tap-button"></ha-icon><b> Azioni Interazione</b></summary>
             <!-- Tap Action -->
@@ -938,24 +966,8 @@ class HaDashboardSidebar extends LitElement {
     return {
       type: 'custom:ha-dashboard-sidebar',
       title: 'Sidebar',
-      width: '250px',
-      entities: [
-        {
-          type: 'sensor',
-          entity: 'sensor.casa_channel_1_power',
-          name: 'Consumo Casa',
-          icon: 'mdi:flash',
-        },
-        {
-          type: 'person',
-          entity: 'person.lorenzo',
-          tracker_entity: 'device_tracker.life360_lorenzo'
-        },
-        {
-          type: 'weather',
-          entity: 'weather.home',
-        }
-      ]
+      width: '',
+      entities: []
     };
   }
   static getConfigElement() {
@@ -1113,11 +1125,26 @@ class HaDashboardSidebar extends LitElement {
         .sensor:hover,.light:hover{background:transparent;border-color:var(--primary-color)}
 
         /* ---------- MINI‑POPUP ------------------------------------------------------- */
-        .mini-popup{
-          position:absolute;top:50%!important;left:50%!important;transform:translate(-50%,-90%)!important;
-          background:var(--card-background-color);border-radius:16px;z-index:9999;
-          padding:0;overflow:visible!important;display:flex;justify-content:center;align-items:center;
-          animation:popup-appear .3s ease forwards;min-width:100px;max-width:90vw;max-height:80vh;width:auto;height:auto
+        .mini-popup {
+            position: absolute;
+            top: 50%!important;
+            left: 50%!important;
+            transform: translate(-50%,-50%)!important;
+            background: var(--card-background-color);
+            border-radius: 24px;
+            z-index: 9999;
+            padding: 10px;
+            overflow: visible!important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: popup-appear .3s ease forwards;
+            /* min-width: 100px; */
+            /* max-width: 90vw; */
+            /* max-height: 80vh; */
+            /* width: auto; */
+            /* height: auto; */
+            margin: 15px;
         }
         @keyframes popup-appear{0%{opacity:0;transform:scale(.8,.4) translateY(-50px)}100%{transform:scale(1) translateY(0)}}
         .mini-popup.closing{animation:dock-minimize .2s ease forwards;pointer-events:none;transform-origin:left center}
@@ -1128,19 +1155,7 @@ class HaDashboardSidebar extends LitElement {
           content:"";position:absolute;top:12px;left:-8px;border-width:8px;border-style:solid;
           border-color:transparent var(--card-background-color,#1a1b1e) transparent transparent
         }
-        .mini-popup .mini-close {
-            position: absolute;
-            top: -16px;
-            right: -15px;
-            color: var(--primary-text-color);
-            cursor: pointer;
-            z-index: 10;
-            user-select: none;
-            --mdc-icon-size: 27px;
-        }
-        .mini-popup .mini-close:hover{color:var(--primary-color)}
 
-        /* ---------- PERSONA ---------------------------------------------------------- */
         .person{
           display:flex;align-items:center;background:rgba(255,255,255,.03);
           border-radius:16px;padding:14px 16px;margin-bottom:2px;border:1px solid rgba(255,255,255,.05);
@@ -1814,7 +1829,6 @@ class HaDashboardSidebar extends LitElement {
           background: var(--primary-color, #888);
           cursor: pointer;
         }
-        /* Container principale (se vuoi override generico) */
         .card.media-player {
             display: flex;
             flex-direction: column;
@@ -1822,7 +1836,6 @@ class HaDashboardSidebar extends LitElement {
             height: 130px;
             align-items: center;
         }
-        /* Titolo / nome del dispositivo */
         .mediaplayer-title {
           font-size: 1rem;
           font-weight: 600;
@@ -1830,7 +1843,6 @@ class HaDashboardSidebar extends LitElement {
           cursor: pointer; /* se vuoi gestire il click */
         }
 
-        /* Sezione info traccia */
         .mediaplayer-info {
           display: flex;
           flex-direction: column;
@@ -1884,7 +1896,7 @@ class HaDashboardSidebar extends LitElement {
             justify-content: space-between;
             align-items: center;
             /* gap: 12px; */
-            width: 200px;
+            width: 225px;
         }
         .mediaplayer-left {
             display: flex;
