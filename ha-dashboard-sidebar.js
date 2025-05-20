@@ -1130,7 +1130,6 @@ class HaDashboardSidebar extends LitElement {
             top: 50%!important;
             left: 50%!important;
             transform: translate(-50%,-50%)!important;
-            background: var(--card-background-color);
             border-radius: 24px;
             z-index: 9999;
             padding: 10px;
@@ -1139,23 +1138,23 @@ class HaDashboardSidebar extends LitElement {
             justify-content: center;
             align-items: center;
             animation: popup-appear .3s ease forwards;
-            /* min-width: 100px; */
-            /* max-width: 90vw; */
-            /* max-height: 80vh; */
-            /* width: auto; */
-            /* height: auto; */
             margin: 15px;
         }
+        .mini-popup .mini-close {
+        	position: relative;
+        	top: -70px;
+        	right: 0px;
+        	color: var(--primary-text-color);
+        	cursor: pointer;
+        	z-index: 10;
+        	user-select: none;
+        	--mdc-icon-size: 27px;
+        }
+        .mini-popup .mini-close:hover{color:var(--primary-color)}
         @keyframes popup-appear{0%{opacity:0;transform:scale(.8,.4) translateY(-50px)}100%{transform:scale(1) translateY(0)}}
         .mini-popup.closing{animation:dock-minimize .2s ease forwards;pointer-events:none;transform-origin:left center}
         @keyframes dock-minimize{0%{opacity:1;transform:scale(1) translateY(0)}100%{opacity:0;transform:scale(.8,.4) translateY(-50px)}}
         .mini-overlay{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:9998}
-
-        .mini-popup::after{
-          content:"";position:absolute;top:12px;left:-8px;border-width:8px;border-style:solid;
-          border-color:transparent var(--card-background-color,#1a1b1e) transparent transparent
-        }
-
         .person{
           display:flex;align-items:center;background:rgba(255,255,255,.03);
           border-radius:16px;padding:14px 16px;margin-bottom:2px;border:1px solid rgba(255,255,255,.05);
@@ -3478,7 +3477,7 @@ class HaDashboardSidebar extends LitElement {
             <div class="mini-overlay" @click=${this._closeMiniPopup}>
               <div class="mini-popup"
                    @click=${e => e.stopPropagation()}
-                   style="top:${this._miniPos?.y}px; left:${this._miniPos?.x}px;">
+                   >
                 <ha-icon class="mini-close" icon="mdi:close-circle-outline" @click=${this._closeMiniPopup}></ha-icon>
                 ${this._renderEntityExpanded(this._miniEntity)}
               </div>
