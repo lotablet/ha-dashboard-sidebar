@@ -595,7 +595,6 @@ class HaDashboardSidebarEditor extends LitElement {
     .switch {
       margin-left: auto;
     }
-
     .divider {
       display: flex;
       align-items: center;
@@ -2809,7 +2808,7 @@ class HaDashboardSidebar extends LitElement {
               </div>
             `
           : html`
-              <div class="switch-header">
+              <div class="switch-header" style="display:flex;flex-direction:column;align-items:center;text-align:center;">
                 <div class="value" @click=${e => e.stopPropagation()}>
                   ${config.name || state.attributes.friendly_name}
                 </div>
