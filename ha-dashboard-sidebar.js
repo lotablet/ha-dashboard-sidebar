@@ -1,7 +1,7 @@
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
 import { loadHaComponents, DEFAULT_HA_COMPONENTS } from "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
 import { LitElement, html, css, nothing } from "https://unpkg.com/lit@2.8.0/index.js?module";
-function bindActionHandler(el, { hasHold = false, hasDoubleClick = false } = {}) {
+function bindActionHandler(el, { hasHold = false} = {}) {
   if (el.__boundActionHandler) return;
   el.__boundActionHandler = true;
 
@@ -21,12 +21,6 @@ function bindActionHandler(el, { hasHold = false, hasDoubleClick = false } = {})
     if (hasHold && duration >= 500) return;
     fireAction(el, 'tap');
   });
-
-  if (hasDoubleClick) {
-    el.addEventListener('dblclick', () => {
-      fireAction(el, 'double_tap');
-    });
-  }
 
   function fireAction(target, type) {
     target.dispatchEvent(new CustomEvent('action', {
@@ -66,8 +60,14 @@ class HaDashboardSidebarEditor extends LitElement {
     this._pickerOpenIndex = null;
     this._zIndexActive = false;
     this._widthRaw = "";
+    this._pendingYaml = {};
     this._heightRaw = "";
     this._expandedIndex = null;
+    if (!window.jsyaml || !window.jsyaml.dump) {
+      import("https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/+esm")
+        .then(mod => window.jsyaml = mod)
+        .catch(() => console.warn("js-yaml non caricato"));
+    }
   }
 
   setConfig(cfg) {
@@ -79,10 +79,8 @@ class HaDashboardSidebarEditor extends LitElement {
       mode: cfg?.mode ?? "vertical",
       align: cfg?.align ?? "left",
       entities: Array.isArray(cfg?.entities) ? cfg.entities : [],
-      start_expanded: cfg?.start_expanded ?? false, // ✅ aggiunto
+      start_expanded: cfg?.start_expanded ?? false,
     };
-
-    // Serve per i campi controllati nei textfield (evita reset visivi)
     this._widthRaw = this._config.width?.replace("px", "") ?? "";
     this._heightRaw = this._config.height?.replace("px", "") ?? "";
   }
@@ -116,8 +114,6 @@ class HaDashboardSidebarEditor extends LitElement {
     if (cfg.mode === "horizontal") {
       delete cfg.align;
     }
-
-    // Rimuovi height se vuoto anche da export finale
     if (!cfg.height) delete cfg.height;
 
     this.dispatchEvent(new CustomEvent("config-changed", {
@@ -129,10 +125,8 @@ class HaDashboardSidebarEditor extends LitElement {
   _row(i, key, val) {
     const ents = [...this._config.entities];
 
-    if (["tap_action", "hold_action", "double_tap_action"].includes(key)) {
+    if (["tap_action", "hold_action"].includes(key)) {
       let fixed = { ...val };
-
-      // PATCH perform-action → call-service
       if (fixed.action === "perform-action" && fixed.perform_action) {
         fixed.action = "call-service";
         fixed.service = fixed.perform_action;
@@ -141,12 +135,9 @@ class HaDashboardSidebarEditor extends LitElement {
 
       ents[i] = { ...ents[i], [key]: fixed };
     }
-
-    // PATCH: aggiorna service_data per call-service dinamicamente
     else if (
       key.startsWith("tap_action.service_data.") ||
-      key.startsWith("hold_action.service_data.") ||
-      key.startsWith("double_tap_action.service_data.")
+      key.startsWith("hold_action.service_data.")
     ) {
       const [actionKey, , param] = key.split(".");
       const action = ents[i][actionKey] || { action: "call-service" };
@@ -159,16 +150,17 @@ class HaDashboardSidebarEditor extends LitElement {
 
     else if (key === "type") {
       const newType = val;
+      if (newType === "custom_card") ents[i].card = ents[i].card || { type: "entities" };
+
       ents[i] = {
         type: newType,
         icon: ents[i].icon || "",
         ...(newType === "custom_card"
-          ? { card: ents[i].card || {} }
+          ? { card: ents[i].card }
           : { entity: "" }),
-        tap_action: { action: "more-info" },
-        hold_action: { action: "none" },
-        double_tap_action: { action: "none" },
-        show_popup: false
+        tap_action:  { action: "more-info" },
+        hold_action: { action: "none"   },
+        show_popup:  false
       };
     }
 
@@ -178,10 +170,23 @@ class HaDashboardSidebarEditor extends LitElement {
 
     this._push("entities", ents);
   }
+  _setCardYaml(index, yaml) {
+    let parsed;
+    try {
+      parsed = window.jsyaml?.load(yaml);
+    } catch (e) {
+      console.warn("❌ YAML parsing error", e);
+      return;
+    }
+
+    const ents = [...this._config.entities];
+    if (!ents[index]) ents[index] = {};
+    if (!ents[index].type) ents[index].type = "custom_card";
+    ents[index].card = parsed;
 
 
-
-
+    this._push("entities", ents);
+  }
   _add() {
     const ents = [...this._config.entities, { type: "sensor", entity: "" }];
     this._push("entities", ents);
@@ -192,286 +197,34 @@ class HaDashboardSidebarEditor extends LitElement {
     ents.splice(i, 1);
     this._push("entities", ents);
   }
-  async _openCardPicker(index) {
-    console.log("🛠️ Avvio _openCardPicker per l'indice:", index);
+  _applyYaml(index) {
+    let parsed = this._pendingYaml || "";
 
-    const createPicker = () => {
-      const p = document.createElement("hui-card-picker");
-      p.hass = this.hass;
-      p.lovelace = editorContext.lovelace;
-      p.value = this._config.entities[index]?.card || {};
-      p.style = "width: 100%; display: block;";
-      p.addEventListener("config-changed", (ev) => {
-        const config = ev.detail.config || ev.detail.value;
-        if (config && config.type) handleSelection(config);
-      });
-      return p;
-    };
-
-    const deepQuery = (root, sel) => {
-      const direct = root.querySelector(sel);
-      if (direct && !direct.tagName?.includes("DASHBOARD-SIDEBAR")) return direct;
-      for (const el of root.querySelectorAll("*")) {
-        if (el.shadowRoot) {
-          const inside = deepQuery(el.shadowRoot, sel);
-          if (inside && !inside.tagName?.includes("DASHBOARD-SIDEBAR")) return inside;
-        }
+    if (typeof parsed === "string") {
+      try {
+        parsed = window.jsyaml.load(parsed);
+      } catch (e) {
+        alert("Errore parsing YAML:\n" + e.message);
+        return;
       }
-      return null;
-    };
+    }
 
-    const editorContext = deepQuery(document.body, "hui-card-element-editor, ha-card-element-editor");
-    if (!editorContext) {
-      console.error("❌ Contesto Lovelace non trovato.");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      alert("Il YAML deve essere un oggetto (chiave-valore).");
+      console.error("Tipo errato o YAML non oggetto", parsed);
       return;
     }
 
-    let guiEditor;
-    let yamlEditor;
-    let showingYaml = false;
-    let picker = createPicker();
-
-    const dialog = document.createElement("ha-dialog");
-    dialog.setAttribute("open", "");
-    dialog.setAttribute("scrimClickAction", "");
-    dialog.setAttribute("escapeKeyAction", "");
-    dialog.classList.add("sidebar-editor-dialog");
-    dialog.style.cssText = `
-      --dialog-content-padding: 0;
-      display: flex;
-      flex-direction: column;
-    `;
-
-    const toggleYamlButton = document.createElement("mwc-button");
-    toggleYamlButton.innerText = "";
-    toggleYamlButton.style.display = "none";
-    toggleYamlButton.addEventListener("click", async () => {
-      showingYaml = !showingYaml;
-      toggleYamlButton.innerText = showingYaml ? "" : "";
-
-      if (showingYaml && guiEditor) {
-        try {
-          const currentConfig = await guiEditor.getConfig?.() ?? guiEditor._config ?? guiEditor.value ?? picker.value;
-          const dumpYaml = window.jsyaml?.dump ?? ((x) => JSON.stringify(x, null, 2));
-          yamlEditor.yaml = dumpYaml(currentConfig);
-        } catch (e) {
-          console.warn("❌ Errore nel dump della GUI", e);
-          yamlEditor.yaml = "";
-        }
-      }
-
-      if (guiEditor) guiEditor.style.display = showingYaml ? "none" : "flex";
-      if (yamlEditor) yamlEditor.style.display = showingYaml ? "flex" : "none";
-    });
-
-    const saveButton = document.createElement("mwc-button");
-    saveButton.innerText = "Salva";
-    saveButton.slot = "primaryAction";
-    saveButton.addEventListener("click", () => {
-      let newConfig;
-      try {
-        newConfig = showingYaml && yamlEditor
-          ? yamlEditor.yaml
-            ? window.jsyaml?.load?.(yamlEditor.yaml) ?? JSON.parse(yamlEditor.yaml)
-            : {}
-          : guiEditor._config || guiEditor.value || picker.value;
-      } catch (e) {
-        console.error("❌ YAML non valido", e);
-        alert("Errore nel parsing YAML, controlla la sintassi.");
-        return;
-      }
-      const ents = [...this._config.entities];
-      ents[index] = { ...ents[index], card: newConfig };
-      this._push("entities", ents);
-      dialog.remove();
-    });
-
-    const closeButton = document.createElement("mwc-button");
-    closeButton.innerText = "Chiudi";
-    closeButton.slot = "secondaryAction";
-    closeButton.addEventListener("click", () => dialog.remove());
-
-    const backButton = document.createElement("mwc-button");
-    backButton.innerText = "Indietro";
-    backButton.slot = "secondaryAction";
-    backButton.style.display = "none";
-    backButton.addEventListener("click", () => {
-      picker = createPicker();
-      contentWrapper.innerHTML = "";
-      contentWrapper.appendChild(picker);
-      backButton.style.display = "none";
-    });
-
-
-    dialog.append(closeButton, backButton, saveButton);
-
-    const footer = document.createElement("div");
-    footer.style.cssText = `
-      display: flex;
-      justify-content: flex-start;
-      gap: 8px;
-      padding: 16px 20px;
-      border-top: 1px solid var(--divider-color);
-    `;
-    footer.append(toggleYamlButton);
-
-    const contentWrapper = document.createElement("div");
-    contentWrapper.style.cssText = `
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: auto;
-      padding: 25px;
-      min-height: 0;
-      background: var(--card-background-color);
-    `;
-
-    const handleSelection = async (cardConfig) => {
-      if (!cardConfig || !cardConfig.type) return;
-      picker.remove();
-      backButton.style.display = "";
-      contentWrapper.innerHTML = "";
-
-      try {
-        const helpers = await window.loadCardHelpers?.();
-
-        const el = await helpers.createCardElement(cardConfig);
-        el.hass = this.hass;
-        await el.setConfig?.(cardConfig);
-        const editor = await el.constructor.getConfigElement?.();
-        if (!editor) throw new Error("Editor grafico non disponibile");
-
-        await editor.setConfig(cardConfig);
-        editor.hass = this.hass;
-        editor.lovelace = editorContext.lovelace;
-        editor.style.cssText = `
-          width: 100%;
-          display: block;
-          flex: 0 0 auto;
-        `;
-
-        guiEditor = editor;
-
-        yamlEditor = document.createElement("ha-yaml-editor");
-        yamlEditor.hass = this.hass;
-        yamlEditor.setAttribute("label", "YAML");
-        yamlEditor.setAttribute("mode", "yaml");
-        yamlEditor.setAttribute("autofocus", "true");
-        yamlEditor.style.cssText = `
-          flex: 0 0 auto;
-          display: none;
-          overflow: auto;
-        `;
-        const dumpYaml = window.jsyaml?.dump ?? ((x) => JSON.stringify(x, null, 2));
-        yamlEditor.value = dumpYaml(cardConfig);
-        yamlEditor.addEventListener("value-changed", (ev) => {
-          yamlEditor.yaml = ev.detail.value;
-        });
-
-        const preview = await helpers.createCardElement(cardConfig);
-        preview.hass = this.hass;
-        const previewWrapper = document.createElement("div");
-        previewWrapper.style.cssText = `
-          display: flex;
-          padding: 12px 16px;
-          background: var(--card-background-color);
-          align-items: center;
-          justify-content: center;
-          box-sizing: border-box;
-          width: 100%;
-          height: 100%;
-          border-top: 1px solid var(--divider-color);
-          overflow: hidden;
-          flex: 0 0 auto;
-        `;
-
-        previewWrapper.appendChild(preview);
-
-        contentWrapper.append(guiEditor, yamlEditor, previewWrapper, footer);
-      } catch (e) {
-        console.warn("❌ Editor non disponibile, fallback a YAML", e);
-        const fallback = document.createElement("pre");
-        fallback.innerText = window.jsyaml?.dump?.(cardConfig) ?? JSON.stringify(cardConfig, null, 2);
-        fallback.style.padding = "16px";
-        contentWrapper.appendChild(fallback);
-        contentWrapper.appendChild(footer);
-      }
-    };
-
-    const container = document.createElement("div");
-    container.style.cssText = `
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: auto;
-      position: relative;
-      padding: 25px;
-    `;
-    container.appendChild(picker);
-    container.appendChild(contentWrapper);
-
-    dialog.appendChild(container);
-    document.body.appendChild(dialog);
-    setInterval(() => {
-      const root = dialog.shadowRoot;
-      if (!root) return;
-
-      const surface = root.querySelector(".mdc-dialog__surface");
-      const container = root.querySelector(".mdc-dialog__container");
-      const content = root.querySelector("#content");
-      const slot = root.querySelector("slot#contentslot");
-
-      const isMobile = window.matchMedia("(max-width: 700px)").matches;
-
-      if (surface) {
-        surface.style.cssText = `
-          width: ${isMobile ? "100vw" : "50vw"} !important;
-          max-width: ${isMobile ? "100vw" : "50vw"} !important;
-          min-width: ${isMobile ? "100vw" : "20vw"} !important;
-          height: ${isMobile ? "100vh" : "auto"} !important;
-          max-height: ${isMobile ? "100vh" : "90vh"} !important;
-          min-height: ${isMobile ? "100vh" : "50vh"} !important;
-          margin: auto !important;
-          padding: 0px !important;
-          border-radius: ${isMobile ? "0" : "24px"} !important;
-          display: flex !important;
-          flex-direction: column !important;
-          box-sizing: border-box !important;
-          overflow: auto !important;
-        `;
-      }
-
-      if (container) {
-        container.style.cssText = `
-          width: ${isMobile ? "100vw" : "auto"} !important;
-          height: ${isMobile ? "100vh" : "auto"} !important;
-          margin: auto !important;
-          padding: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          box-sizing: border-box !important;
-        `;
-      }
-
-      if (content) {
-        content.style.setProperty("flex", "1", "important");
-        content.style.setProperty("display", "flex", "important");
-        content.style.setProperty("flex-direction", "column", "important");
-        content.style.setProperty("overflow", "auto", "important");
-      }
-
-      if (slot) {
-        slot.style.setProperty("flex", "1", "important");
-        slot.style.setProperty("min-height", "0", "important");
-      }
-    }, 100);
-
+    const ents = [...this._config.entities];
+    ents[index] = { ...ents[index], type: "custom_card", card: parsed };
+    this._push("entities", ents);
+    alert("Sended to yaml!");
   }
   render() {
     if (!this.hass) return html``;
 
     const typeOpts = [
-      "sensor", "person", "weather", "light", "switch", "fan", "cover",
+      "entity", "sensor", "person", "weather", "light", "switch", "fan", "cover",
       "climate", "media_player", "button", "script", "custom_card"
     ].map(t => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }));
 
@@ -485,7 +238,7 @@ class HaDashboardSidebarEditor extends LitElement {
         <ha-selector class="sel" .hass=${this.hass}
           .selector=${{
             select: {
-              mode: "dropdown", // <- questo forza il menu a tendina
+              mode: "dropdown",
               options: [
                 { value: "vertical", label: "Vertical" },
                 { value: "horizontal", label: "Horizontal" }
@@ -510,7 +263,6 @@ class HaDashboardSidebarEditor extends LitElement {
           ?hidden=${this._config.mode === "horizontal"}
           @value-changed=${e => this._push("align", e.detail.value)}>
         </ha-selector>
-
         <ha-formfield class="switch" label="Start expanded">
           <ha-switch
             .checked=${this._config.start_expanded ?? false}
@@ -519,7 +271,6 @@ class HaDashboardSidebarEditor extends LitElement {
         </ha-formfield>
       </div>
 
-
       <div class="row">
         <ha-textfield class="full" label="Width (in px)"
           .value=${this._config.width?.replace("px", "") || ""}
@@ -527,119 +278,177 @@ class HaDashboardSidebarEditor extends LitElement {
           @input=${e => this._widthRaw = e.target.value}
           @blur=${() => this._push("width", this._widthRaw.trim())}>
         </ha-textfield>
-
         <ha-textfield class="full" label="Height (in px)"
           .value=${this._config.height?.replace("px", "") || ""}
           @input=${e => this._heightRaw = e.target.value}
           @blur=${() => this._push("height", this._heightRaw.trim())}>
         </ha-textfield>
       </div>
-      ${this._config.entities.map((ent, i) => html`
-        <div class="divider">
-          <b>Card ${i + 1}</b><span></span>
-          <ha-icon icon="mdi:close-circle" class="delete" @click=${() => this._del(i)} title="Remove"></ha-icon>
-        </div>
-        <div class="row">
-          <div class="column" style="min-width: 50px;">
-            <div class="field-label">Type</div>
-            <ha-selector class="sel small" .hass=${this.hass}
-              .selector=${{ select: { options: typeOpts } }}
-              .value=${ent.type || "sensor"}
-              @value-changed=${e => this._row(i, "type", e.detail.value)}>
-            </ha-selector>
-          </div>
-          <div class="column" style="min-width: 20px;">
-            <div class="field-label">Icon</div>
-            <ha-icon-picker class="sel icon-cell" .hass=${this.hass}
-              .value=${ent.icon || ""}
-              @value-changed=${e => this._row(i, "icon", e.detail.value)}>
-            </ha-icon-picker>
-          </div>
-          <div class="column" style="min-width: 50px;">
-            <ha-formfield class="switch" label="Show popup">
-              <ha-switch
-                .checked=${ent.show_popup ?? false}
-                @change=${e => this._row(i, "show_popup", e.target.checked)}>
-              </ha-switch>
-            </ha-formfield>
-          </div>
-        </div>
-        <div class="column">
-          ${ent.type !== "custom_card"
-            ? html`
-                <div class="column" style="gap: 12px;">
-                  <div style="flex: 2;min-width: 20px;">
-                    <div class="field-label">Entity</div>
-                    <ha-selector class="full" .hass=${this.hass}
-                      .selector=${{ entity: { domain: [ent.type] } }}
-                      .value=${ent.entity}
-                      @value-changed=${e => this._row(i, "entity", e.detail.value)}>
-                    </ha-selector>
-                  </div>
 
-                  <div style="flex: 2;min-width: 20px;max-width:150px;">
-                    <div class="field-label">Collapsed</div>
-                    <ha-selector class="full" .hass=${this.hass}
-                      .selector=${{
-                        select: {
-                          mode: "dropdown",
-                          options: [
-                            { value: "none", label: "None" },
-                            { value: "true", label: "True" },
-                            { value: "false", label: "False" }
-                          ]
-                        }
-                      }}
-                      .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
-                      @value-changed=${e => {
-                        const ents = [...this._config.entities];
-                        const val = e.detail.value;
-                        if (val === "none") {
-                          delete ents[i].collapsed;
-                        } else {
-                          ents[i].collapsed = val === "true";
-                        }
-                        this._push("entities", ents);
-                      }}>
-                    </ha-selector>
-                  </div>
-                </div>`
-            : html`
-                <div class="column" style="gap: 12px;">
-                  <mwc-button class="yaml"
-                    title="For complex cards, build it outside and paste it in YAML mode."
-                    @click=${() => this._openCardPicker(i)}>
-                    Select Card (YAML editor not available yet)
-                  </mwc-button>
-
-                  <div style="flex: 2;min-width: 20px;max-width:150px;">
-                    <div class="field-label">Collapsed</div>
-                    <ha-selector class="full" .hass=${this.hass}
-                      .selector=${{
-                        select: {
-                          mode: "dropdown",
-                          options: [
-                            { value: "none", label: "None" },
-                            { value: "true", label: "True" },
-                            { value: "false", label: "False" }
-                          ]
-                        }
-                      }}
-                      .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
-                      @value-changed=${e => {
-                        const ents = [...this._config.entities];
-                        const val = e.detail.value;
-                        if (val === "none") {
-                          delete ents[i].collapsed;
-                        } else {
-                          ents[i].collapsed = val === "true";
-                        }
-                        this._push("entities", ents);
-                      }}>
-                    </ha-selector>
-                  </div>
-                </div>`
+      ${this._config.entities.map((ent, i) => {
+        if (ent.type === "custom_card") {
+          if (!this._pendingYaml || typeof this._pendingYaml !== "object") {
+            this._pendingYaml = {};
           }
+          const yamlCurrent = window.jsyaml?.dump?.(ent.card) || "";
+          if (
+            typeof this._pendingYaml[i] !== "string" ||
+            this._pendingYaml[i].trim() === "" ||
+            (ent.card && this._pendingYaml[i].trim() !== yamlCurrent.trim())
+          ) {
+            this._pendingYaml[i] = yamlCurrent;
+          }
+        }
+
+        return html`
+          <div class="divider">
+            <b>Card ${i + 1}</b><span></span>
+            <ha-icon icon="mdi:close-circle" class="delete" @click=${() => this._del(i)} title="Remove"></ha-icon>
+          </div>
+          <div class="row">
+            <div class="column" style="min-width: 50px;">
+              <div class="field-label">Type</div>
+              <ha-selector class="sel small" .hass=${this.hass}
+                .selector=${{ select: { options: typeOpts } }}
+                .value=${ent.type || "sensor"}
+                @value-changed=${e => this._row(i, "type", e.detail.value)}>
+              </ha-selector>
+            </div>
+            <div class="column" style="min-width: 20px;">
+              <div class="field-label">Icon</div>
+              <ha-icon-picker class="sel icon-cell" .hass=${this.hass}
+                .value=${ent.icon || ""}
+                @value-changed=${e => this._row(i, "icon", e.detail.value)}>
+              </ha-icon-picker>
+            </div>
+            <div class="column" style="min-width: 50px;">
+              <ha-formfield class="switch" label="Show popup">
+                <ha-switch
+                  .checked=${ent.show_popup ?? false}
+                  @change=${e => this._row(i, "show_popup", e.target.checked)}>
+                </ha-switch>
+              </ha-formfield>
+            </div>
+          </div>
+          <div class="column">
+            ${ent.type !== "custom_card"
+              ? html`
+                  <div class="column" style="gap: 12px;">
+                    <div style="flex: 2;min-width: 20px;">
+                      <div class="field-label">Entity</div>
+                      <ha-selector class="full" .hass=${this.hass}
+                        .selector=${ent.type === "entity"
+                          ? { entity: {} }
+                          : { entity: { domain: [ent.type] } }}
+                        .value=${ent.entity}
+                        @value-changed=${e => this._row(i, "entity", e.detail.value)}>
+                      </ha-selector>
+                    </div>
+                    <div style="flex: 2;min-width: 20px;max-width:150px;">
+                      <div class="field-label">Collapsed</div>
+                      <ha-selector class="full" .hass=${this.hass}
+                        .selector=${{
+                          select: {
+                            mode: "dropdown",
+                            options: [
+                              { value: "none", label: "None" },
+                              { value: "true", label: "True" },
+                              { value: "false", label: "False" }
+                            ]
+                          }
+                        }}
+                        .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
+                        @value-changed=${e => {
+                          const ents = [...this._config.entities];
+                          const val = e.detail.value;
+                          if (val === "none") {
+                            delete ents[i].collapsed;
+                          } else {
+                            ents[i].collapsed = val === "true";
+                          }
+                          this._push("entities", ents);
+                        }}>
+                      </ha-selector>
+                    </div>
+                  </div>`
+              : html`
+                  <div class="column" style="font-size:10px;gap: 12px;">
+                    <div class="yaml-entry">
+                      <div class="field-label">Paste your card YAML here</div>
+                      <ha-yaml-editor
+                        .hass=${this.hass}
+                        .value=${typeof this._pendingYaml[i] === "string"
+                          ? this._pendingYaml[i]
+                          : window.jsyaml?.dump?.(this._pendingYaml[i]) || ""}
+                        @value-changed=${e => {
+                          if (typeof e.detail.value === "object") {
+                            this._pendingYaml[i] = window.jsyaml?.dump?.(e.detail.value) || "";
+                          } else {
+                            this._pendingYaml[i] = e.detail.value;
+                          }
+                        }}
+                        style="height: 250px; margin-top: 8px;"
+                      ></ha-yaml-editor>
+                      <mwc-button
+                        outlined dense
+                        @click=${() => {
+                          try {
+                            if (typeof this._pendingYaml[i] !== "string") {
+                              this._pendingYaml[i] = window.jsyaml?.dump?.(this._pendingYaml[i]) || "";
+                            }
+                            let parsed = window.jsyaml?.load(this._pendingYaml[i]);
+                            if (Array.isArray(parsed)) {
+                              if (parsed.length === 1) {
+                                parsed = parsed[0];
+                              } else {
+                                alert("Non puoi incollare più di una card alla volta.");
+                                return;
+                              }
+                            }
+                            if (!parsed || typeof parsed !== "object") throw new Error();
+
+                            const ents = [...this._config.entities];
+                            ents[i].card = parsed;
+                            this._push("entities", ents);
+                            this._pendingYaml[i] = window.jsyaml?.dump?.(parsed) || "";
+                            alert("YAML applied!");
+                          } catch (e) {
+                            alert("YAML non valido");
+                          }
+                        }}
+                        style="margin-top:8px;width:max-content;">
+                        APPLY
+                      </mwc-button>
+                    </div>
+                    <div style="flex: 2;min-width: 20px;max-width:150px;">
+                      <div class="field-label">Collapsed</div>
+                      <ha-selector class="full" .hass=${this.hass}
+                        .selector=${{
+                          select: {
+                            mode: "dropdown",
+                            options: [
+                              { value: "none", label: "None" },
+                              { value: "true", label: "True" },
+                              { value: "false", label: "False" }
+                            ]
+                          }
+                        }}
+                        .value=${ent.collapsed === true ? "true" : ent.collapsed === false ? "false" : "none"}
+                        @value-changed=${e => {
+                          const ents = [...this._config.entities];
+                          const val = e.detail.value;
+                          if (val === "none") {
+                            delete ents[i].collapsed;
+                          } else {
+                            ents[i].collapsed = val === "true";
+                          }
+                          this._push("entities", ents);
+                        }}>
+                      </ha-selector>
+                    </div>
+                  </div>`
+            }
+
           <details class="expander">
             <summary><ha-icon icon="mdi:gesture-tap-button"></ha-icon><b> Azioni Interazione</b></summary>
             <!-- Tap Action -->
@@ -682,18 +491,58 @@ class HaDashboardSidebarEditor extends LitElement {
             ` : ""}
           </details>
         </div>
-      `)}
-
+      `;
+      })}
       <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
     `;
   }
+
+
   static styles = css`
     :host {
       display: block;
       padding: 16px;
       font-size: 14px;
     }
-
+    .entity-name {
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+    .yaml-placeholder {
+        padding: 12px;
+        font-size: 14px;
+        color: var(--secondary-text-color);
+        background: var(--card-background-color);
+        border: 1px dashed var(--divider-color);
+        border-radius: 8px;
+        text-align: center;
+    }
+    .yaml-entry {
+      margin-top: 12px;
+      background: var(--card-background-color);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .card entity-card,
+    .entity-card {
+    	display: flex;
+    	justify-content: center;
+    	align-items: center;
+    	padding: 0;
+    	height: auto;
+    	border-radius: 16px;
+    	background: var(--card-background-color,rgba(255,255,255,.03));
+    	border: 1px solid var(--divider-color,rgba(255,255,255,.05));
+    	cursor: pointer;
+    	transition: 0.3s;
+    	color: var(--primary-text-color,#fff);
+    	flex-direction: column;
+    }
+    .entity-value {
+        font-size: 0.95rem;
+        color: var(--primary-text-color);
+    }
     .full {
       width: 100%;
       margin: 6px 0;
@@ -913,15 +762,11 @@ class HaDashboardSidebar extends LitElement {
     if (!state) return;
 
     const actualTemp = state.attributes.temperature;
-
-    // Se Home Assistant ha aggiornato, resetta
     if (this._optimisticTemp !== undefined && actualTemp === this._optimisticTemp) {
       this._optimisticTemp = undefined;
       this._optimisticUntil = 0;
       this.requestUpdate();
     }
-
-    // Se è passato troppo tempo, resetta forzatamente
     if (this._optimisticUntil && Date.now() > this._optimisticUntil) {
       this._optimisticTemp = undefined;
       this._optimisticUntil = 0;
@@ -1122,9 +967,8 @@ class HaDashboardSidebar extends LitElement {
           border:1px solid var(--divider-color,rgba(255,255,255,.05));
           cursor:pointer;transition:.3s;color:var(--primary-text-color,#fff);flex-shrink:0
         }
-        .sensor:hover,.light:hover{background:transparent;border-color:var(--primary-color)}
 
-        /* ---------- MINI‑POPUP ------------------------------------------------------- */
+        .sensor:hover,.light:hover{background:transparent;border-color:var(--primary-color)}
         .mini-popup {
             position: absolute;
             background: transparent;
@@ -1300,6 +1144,7 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.collapsed .button,
         .dashboard.collapsed .custom-card,
         .dashboard.collapsed .light,
+        .dashboard.collapsed .entity-card,
         .dashboard.collapsed .switch{
             width: 56px;
             min-height: 60px !important;
@@ -2097,26 +1942,20 @@ class HaDashboardSidebar extends LitElement {
     try {
       const helpers = await window.loadCardHelpers();
       const card = await helpers.createCardElement(entity.card);
-
       if (typeof card.setConfig === "function") {
         card.setConfig(entity.card);
       }
-
       card.hass = this.hass;
-
       this._createdCards.set(id, card);
-
-      this.requestUpdate(); // <--- importantissimo: forza aggiornamento una volta sola dopo creazione
+      this.requestUpdate();
     } catch (err) {
-      console.error('[sidebar] Error loading custom card:', err, entity);
+      console.error('[sidebar] Errore nella creazione della custom card:', err);
     }
   }
-
   connectedCallback() {
     super.connectedCallback();
     this._updateTime();
   }
-
   disconnectedCallback() {
     super.disconnectedCallback();
 
@@ -2135,7 +1974,6 @@ class HaDashboardSidebar extends LitElement {
 
     bindActionHandler(el, {
       hasHold: config.hold_action?.action !== 'none',
-      hasDoubleClick: config.double_tap_action?.action !== 'none'
     });
 
     el.addEventListener("action", (e) => this._handleAction(e, config));
@@ -2220,25 +2058,15 @@ class HaDashboardSidebar extends LitElement {
   }
   _openMiniPopup(entity) {
       this._miniEntity = entity;
-
-      // Calcolare la posizione centrata
       const screenW = window.innerWidth;
       const screenH = window.innerHeight;
-
-      // Calcolare la larghezza e altezza del popup
       const popup = this.shadowRoot.querySelector('.mini-popup');
       if (!popup) return;
-
       const rect = popup.getBoundingClientRect();
-
-      // Posizioniamo il popup al centro della finestra
       const x = (screenW - rect.width) / 2;
       const y = (screenH - rect.height) / 2;
-
       this._miniPos = { x, y };
       this.requestUpdate();
-
-      // Chiudi il popup se clicchi fuori
       const onClickAway = (ev) => {
         if (!this.shadowRoot.querySelector('.mini-popup')?.contains(ev.target)) {
           this._closeMiniPopup();
@@ -2271,7 +2099,7 @@ class HaDashboardSidebar extends LitElement {
         this._miniEntity = null;
         this._miniPos = null;
         this.requestUpdate();
-      }, 200); // deve combaciare con i 200ms della animazione
+      }, 200);
     } else {
       this._miniEntity = null;
       this._miniPos = null;
@@ -2419,22 +2247,17 @@ class HaDashboardSidebar extends LitElement {
 
   _renderPersonModal() {
     if (!this._showModal || !this._selectedEntity) return html``;
-
     const personId = this._selectedEntity.entity;
     const personState = this.hass.states[personId];
     if (!personState) return html``;
-
-    // Recupera configurazione della persona
     const personConfig = this.config.entities.find(e => e.entity === personId);
     const trackerId = personConfig?.tracker_entity;
     const tracker = trackerId ? this.hass.states[trackerId] : null;
-
     const latitude = tracker?.attributes?.latitude || personState.attributes.latitude;
     const longitude = tracker?.attributes?.longitude || personState.attributes.longitude;
     const gps_accuracy = tracker?.attributes?.gps_accuracy || personState.attributes.gps_accuracy;
     const last_updated = tracker?.last_updated || personState.last_updated;
     const hasLocation = latitude && longitude;
-
     return html`
       <div class="modal" @click=${this._closeModal}>
         <div class="modal-content" @click=${(e) => e.stopPropagation()}>
@@ -2491,72 +2314,144 @@ class HaDashboardSidebar extends LitElement {
       ` : ''}
     `;
   }
-	_renderEntity(entity) {
-		if (!entity) return html``;
+  /* ───────────────── build entity-card centrata ───────────────── */
+  async _buildEntityCard(entityId) {
+      try {
+          const helpers = await window.loadCardHelpers();
+          const card = await helpers.createCardElement({
+              type: 'entities',
+              entities: [entityId],
+              show_header_toggle: false
+          });
+          card.hass = this.hass;
 
-		/* -------- collapsed:true / false sul singolo entity -------- */
-		if (entity.hasOwnProperty('collapsed')) {
-			if (entity.collapsed  === true  && !this._collapsed) return html``;
-			if (entity.collapsed  === false &&  this._collapsed) return html``;
-		}
+          /* patch layout verticale */
+          try {
+              await card.updateComplete?.();
+              if (card.shadowRoot) {
+                  const style = document.createElement('style');
+                  style.textContent = `
+                      #states { padding: 0 !important; }
+                      .state  {
+                          display: flex;
+                          flex-direction: column;
+                          align-items: center;
+                          justify-content: center;
+                          gap: 4px;
+                      }
+                      .state .name {
+                          text-align: center;
+                          width: 100%;
+                      }
+                  `;
+                  card.shadowRoot.appendChild(style);
+              }
+          } catch (patchErr) {
+              console.warn('Patch stile entity-card fallita', patchErr);
+          }
 
-		/* -------- CUSTOM CARD -------------------------------------- */
-		if (entity.type === 'custom_card') {
+          return card;          /* → Promise risolta con la card */
+      } catch (e) {
+          console.error('buildEntityCard ERROR', e);
+          const div = document.createElement('div');
+          div.textContent = '⚠️';
+          return div;          /* evita i “…” infiniti */
+      }
+  }
 
-			/* ① sidebar COLLAPSED  →   piccola icona‐bottone */
-			if (this._collapsed) {
-				return html`
-					<div class="card custom-card">
-						<div class="collapsed-clickable-box"
-								 tabindex="0"
-								 @click=${(e) => this._handleAction(e, entity)}
-								 @contextmenu=${(e) => this._handleHoldAction(e, entity)}>
-							<div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
-						</div>
-					</div>`;
-			}
+  _renderEntity(entity) {
+      if (!entity) return html``;
 
-			/* ② sidebar espansa  →   renderizza la card vera */
-			const id   = entity.card.entity || entity.card.unique_id || JSON.stringify(entity.card);
-			const card = this._createdCards.get(id);
+      /* -------- collapsed:true / false sul singolo entity -------- */
+      if (entity.hasOwnProperty('collapsed')) {
+          if (entity.collapsed === true  && !this._collapsed) return html``;
+          if (entity.collapsed === false &&  this._collapsed) return html``;
+      }
 
-			if (card) {
-				card.hass = this.hass;
-				const applyStyle = !this._collapsed && entity.style;
+      /* -------- CUSTOM CARD -------------------------------------- */
+      if (entity.type === 'custom_card') {
 
-				return html`
-					<div class="custom-card-wrapper" style="${applyStyle ? entity.style : ''}">
-						${card}
-					</div>`;
-			}
+          /* ① sidebar COLLAPSED → icona */
+          if (this._collapsed) {
+              return html`
+                  <div class="card custom-card">
+                      <div class="collapsed-clickable-box"
+                           tabindex="0"
+                           @click=${e => this._handleAction(e, entity)}
+                           @contextmenu=${e => this._handleHoldAction(e, entity)}>
+                          <div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
+                      </div>
+                  </div>`;
+          }
 
-			/* (lazy-load se non ancora creata) */
-			this._createCustomCard(entity);
-			return html``;
-		}
+          /* ② sidebar ESPANSA → card vera */
+          const id   = entity.card.entity || entity.card.unique_id || JSON.stringify(entity.card);
+          const card = this._createdCards.get(id);
 
-		/* -------- ENTITÀ “normali” ---------------------------------- */
-		if (!entity.entity) return html``;
-		const state  = this.hass.states[entity.entity];
-		if (!state)  return html``;
+          if (card) {
+              card.hass = this.hass;
+              const applyStyle = !this._collapsed && entity.style;
+              return html`
+                  <div class="custom-card-wrapper" style="${applyStyle ? entity.style : ''}">
+                      ${card}
+                  </div>`;
+          }
 
-		const domain = entity.entity.split('.')[0];
+          /* lazy-load */
+          this._createCustomCard(entity);
+          return html``;
+      }
 
-		switch (domain) {
-			case 'weather':       return this._renderWeather(entity);
-			case 'person':        return this._renderPerson(entity);
-			case 'sensor':        return this._renderSensor(entity);
-			case 'cover':         return this._renderCover(entity);
-			case 'climate':       return this._renderClimate(entity);
-			case 'switch':        return this._renderSwitch(entity);
-			case 'script':
-			case 'button':        return this._renderButton(entity);
-			case 'fan':           return this._renderFan(entity);
-			case 'media_player':  return this._renderMediaPlayer(entity);
-			case 'light':         return this._renderLight(entity);
-			default:              return html``;
-		}
-	}
+      /* -------- ENTITÀ “normali” ---------------------------------- */
+      if (!entity.entity) return html``;
+      const state = this.hass.states[entity.entity];
+      if (!state) return html``;
+
+      /* ---------- TYPE: "entity" ---------------------------------- */
+      if (entity.type === 'entity') {
+
+          /* collapsed → solo icona */
+          if (this._collapsed) {
+              return html`
+                  <div class="card entity-card">
+                      <div class="collapsed-clickable-box"
+                           tabindex="0"
+                           @click=${e => this._handleAction(e, entity)}
+                           @contextmenu=${e => this._handleHoldAction(e, entity)}>
+                          <div class="icon">${this._renderIcon(entity, 'entity')}</div>
+                      </div>
+                  </div>`;
+          }
+
+          /* expanded → card nativa in colonna caricata async */
+          return html`
+              <div class="card entity-card"
+                   @click=${e => this._handleAction(e, entity)}
+                   @contextmenu=${e => this._handleHoldAction(e, entity)}>
+                  ${until(this._buildEntityCard(entity.entity), html`<span style="opacity:.6;">…</span>`)}
+              </div>`;
+      }
+
+      /* ---------- altri domini standard --------------------------- */
+      const domain = entity.entity.split('.')[0];
+
+      switch (domain) {
+          case 'weather':       return this._renderWeather(entity);
+          case 'person':        return this._renderPerson(entity);
+          case 'sensor':        return this._renderSensor(entity);
+          case 'cover':         return this._renderCover(entity);
+          case 'climate':       return this._renderClimate(entity);
+          case 'switch':        return this._renderSwitch(entity);
+          case 'script':
+          case 'button':        return this._renderButton(entity);
+          case 'fan':           return this._renderFan(entity);
+          case 'media_player':  return this._renderMediaPlayer(entity);
+          case 'light':         return this._renderLight(entity);
+          default:              return html``;
+      }
+  }
+
+
   _renderCover(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
@@ -2751,15 +2646,11 @@ class HaDashboardSidebar extends LitElement {
 
     let newTemp = this._pendingTemp ?? this._optimisticTemp ?? current;
     newTemp = Math.max(min, Math.min(max, newTemp + delta));
-
-    // Aggiorna localmente per l'interfaccia
     this._pendingTemp = newTemp;
     this._optimisticTemp = newTemp;
     this._optimisticUntil = Date.now() + 8000;
 
     this.requestUpdate();
-
-    // Invia a Home Assistant
     this._callService('climate', 'set_temperature', entityId, {
       temperature: newTemp
     });
@@ -3164,15 +3055,11 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
-
   _renderSensor(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
-
     const value = state.state;
     const isActive = (!isNaN(value) && Number(value) > 0) || value === "on";
-
     const renderValue = () => {
       return this._collapsed
         ? html`
@@ -3188,7 +3075,6 @@ class HaDashboardSidebar extends LitElement {
             </div>
           `;
     };
-
     return html`
       <div class="sensor">
         ${this._collapsed ? html`
@@ -3218,10 +3104,8 @@ class HaDashboardSidebar extends LitElement {
   _renderWeather(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
-
     const weatherIcon = this._getWeatherIcon(state.state);
     const weatherState = this._getWeatherState(state.state);
-
     return html`
       <div class="card weather">
         ${this._collapsed ? html`
@@ -3254,15 +3138,12 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-
   _renderPerson(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
-
     const entityPicture = state.attributes.entity_picture || 'https://www.gravatar.com/avatar/0?d=mp';
     const isHome = state.state.toLowerCase() === 'home';
     const imageClass = isHome ? 'color' : 'grayscale';
-
     if (this._collapsed) {
       return html`
         <div class="person-wrapper">
@@ -3326,8 +3207,6 @@ class HaDashboardSidebar extends LitElement {
     if (translations[stateKey]?.[lang]) {
       return translations[stateKey][lang];
     }
-
-    // Fallback per zone personalizzate → capitalizza
     return this._capitalize(stateKey.replace(/_/g, ' '));
   }
   _renderIcon(config = {}, fallbackType = null) {
@@ -3365,11 +3244,7 @@ class HaDashboardSidebar extends LitElement {
   }
   _parseTitle(title) {
     if (!title) return "";
-
-    // Ottieni utente corrente da Home Assistant
     const userName = this.hass?.user?.name || "utente";
-
-    // Rimpiazza {{ user }} con il nome dell'utente loggato
     return title.replace("{{ user }}", userName);
   }
   setConfig(config) {
@@ -3390,8 +3265,7 @@ class HaDashboardSidebar extends LitElement {
         tracker_entity: e.tracker_entity || null,
         tap_action: e.tap_action || { action: "more-info" },
         hold_action: e.hold_action || { action: "none" },
-        double_tap_action: e.double_tap_action || { action: "none" },
-        show_popup: e.show_popup || false, // ✅ Aggiunto qui nella card
+        show_popup: e.show_popup || false,
       }))
     };
 
@@ -3536,7 +3410,7 @@ class HaDashboardSidebar extends LitElement {
     };
   }
 }
-console.log(`Hello from HA Dashboard Sidebar :) `);
+console.log(`Hello from HA-Dashboard-Sidebar`);
 customElements.define("ha-dashboard-sidebar", HaDashboardSidebar);
 window.customCards = window.customCards || [];
 window.customCards.push({
