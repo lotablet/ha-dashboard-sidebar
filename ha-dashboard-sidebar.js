@@ -3467,9 +3467,6 @@ class HaDashboardSidebar extends LitElement {
               <div class="mini-popup"
                    @click=${e => e.stopPropagation()}
                    style="top:${this._miniPos?.y}px; left:${this._miniPos?.x}px;">
-                <div class="mini-popup-header">
-                  <ha-icon class="mini-close" icon="mdi:close-circle-outline" @click=${this._closeMiniPopup}></ha-icon>
-                </div>
                 <div class="mini-popup-content">
                   ${until(this._renderEntityExpanded(this._miniEntity), html`<div>Caricamento...</div>`)}
                 </div>
