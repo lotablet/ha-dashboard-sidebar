@@ -93,6 +93,7 @@ class HaDashboardSidebarEditor extends LitElement {
 
     };
     this._pickerOpenIndex = null;
+    this._iconHover = {};
     this._zIndexActive = false;
     this._widthRaw = "";
     this._pendingYaml = {};
@@ -283,6 +284,7 @@ class HaDashboardSidebarEditor extends LitElement {
     ].map(t => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }));
 
     return html`
+      <div class="big-divider"></div>
       <ha-textfield class="full" label="Sidebar title"
         .value=${this._config.title}
         @input=${e => this._push("title", e.target.value)}>
@@ -338,7 +340,7 @@ class HaDashboardSidebarEditor extends LitElement {
           @blur=${() => this._push("height", this._heightRaw.trim())}>
         </ha-textfield>
       </div>
-
+      <div class="big-divider"></div>
       ${this._config.entities.map((ent, i) => {
         if (ent.type === "custom_card") {
           if (!this._pendingYaml || typeof this._pendingYaml !== "object") {
@@ -357,30 +359,63 @@ class HaDashboardSidebarEditor extends LitElement {
 
         return html`
           <div class="divider" style="display: flex; align-items: center; padding: 0;">
-            <b style="margin-right: 12px;">Card ${i + 1}</b>
+            <b style="margin-right: 12px;font-size:16px;">Card ${i + 1}</b>
             <span class="divider-actions" style="display: flex; gap: 4px;">
             </span>
-            <div style="flex: 1 1 auto;"></div>
-            <ha-icon
-              icon="mdi:arrow-up-bold"
-              class="move"
-              ?disabled=${i === 0}
-              title="Sposta su"
-              @click=${() => this._moveUp(i)}
-            ></ha-icon>
-            <ha-icon
-              icon="mdi:arrow-down-bold"
-              class="move"
-              ?disabled=${i === this._config.entities.length - 1}
-              title="Sposta giù"
-              @click=${() => this._moveDown(i)}
-            ></ha-icon>
+            <div class="icon-circle">
+              <ha-icon
+                icon="mdi:arrow-up-bold"
+                class="move"
+                ?disabled=${i === 0}
+                title="Sposta su"
+                @click=${() => this._moveUp(i)}
+                @mouseenter=${() => { this._iconHover[`up-${i}`] = true; this.requestUpdate(); }}
+                @mouseleave=${() => { this._iconHover[`up-${i}`] = false; this.requestUpdate(); }}
+                style=${`
+                  --mdc-icon-size: 22px;
+                  cursor: ${i === 0 ? 'not-allowed' : 'pointer'};
+                  color: ${this._iconHover[`up-${i}`] && i !== 0 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
+                  opacity: ${i === 0 ? 0.3 : 1};
+                  transition: color 0.15s, filter 0.15s;
+                  filter: ${this._iconHover[`up-${i}`] && i !== 0 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
+                `}
+              ></ha-icon>
+            </div>
+            <div class="icon-circle">
+              <ha-icon
+                icon="mdi:arrow-down-bold"
+                class="move"
+                ?disabled=${i === this._config.entities.length - 1}
+                title="Sposta giù"
+                @click=${() => this._moveDown(i)}
+                @mouseenter=${() => { this._iconHover[`down-${i}`] = true; this.requestUpdate(); }}
+                @mouseleave=${() => { this._iconHover[`down-${i}`] = false; this.requestUpdate(); }}
+                style=${`
+                  --mdc-icon-size: 22px;
+                  cursor: ${i === this._config.entities.length - 1 ? 'not-allowed' : 'pointer'};
+                  color: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
+                  opacity: ${i === this._config.entities.length - 1 ? 0.3 : 1};
+                  transition: color 0.15s, filter 0.15s;
+                  filter: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
+                `}
+              ></ha-icon>
+            </div>
+            <div style="width: 10px;"></div>
             <ha-icon
               icon="mdi:close-circle"
               class="delete divider-delete"
               @click=${() => this._del(i)}
               title="Remove"
-            ></ha-icon>
+              @mouseenter=${() => { this._iconHover[`del-${i}`] = true; this.requestUpdate(); }}
+              @mouseleave=${() => { this._iconHover[`del-${i}`] = false; this.requestUpdate(); }}
+              style=${`
+                --mdc-icon-size: 28px;
+                cursor:pointer;
+                color: ${this._iconHover[`del-${i}`] ? 'red' : '#e35'};
+                transition: color 0.15s, filter 0.15s;
+                filter: ${this._iconHover[`del-${i}`] ? 'drop-shadow(0 0 5px var(--accent-color, #ff9800))' : 'none'};
+              `}
+            />
           </div>
           <div class="row">
             <div class="column" style="min-width: 50px;">
@@ -549,6 +584,7 @@ class HaDashboardSidebarEditor extends LitElement {
             ` : ""}
           </details>
         </div>
+        <div class="big-divider"></div>
       `;
       })}
       <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
@@ -561,6 +597,29 @@ class HaDashboardSidebarEditor extends LitElement {
       display: block;
       padding: 16px;
       font-size: 14px;
+    }
+    .big-divider {
+    	width: 100%;
+    	height: 3px;
+    	background: var(--accent-color);
+    	border-radius: 8px;
+    	margin: 32px 0px 24px;
+    	opacity: 0.95;
+    }
+    .icon-circle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 36%;
+      border: 3px solid var(--primary-text-color, #ff9800);
+      width: 30px;
+      height: 30px;
+      background: rgba(0,0,0,0.05);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .icon-circle:hover {
+      border-color: var(--accent-color, #ff9800);
+      background: rgba(255,152,0,0.1); /* leggero highlight */
     }
     .entity-name {
         font-weight: bold;
