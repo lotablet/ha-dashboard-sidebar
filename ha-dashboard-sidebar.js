@@ -195,21 +195,27 @@ class HaDashboardSidebarEditor extends LitElement {
       };
       ents[i] = { ...ents[i], [actionKey]: action };
     }
-
     else if (key === "type") {
       const newType = val;
-      if (newType === "custom_card") ents[i].card = ents[i].card || { type: "entities" };
+      const current = ents[i] || {};
 
       ents[i] = {
+        ...current,
         type: newType,
-        icon: ents[i].icon || "",
+        icon: current.icon || "",
+        // Se custom_card, mantieni la card già presente SENZA crearne una vuota!
         ...(newType === "custom_card"
-          ? { card: ents[i].card }
+          ? (current.card ? { card: current.card } : {}) // solo se già c'è!
           : { entity: "" }),
         tap_action:  { action: "more-info" },
         hold_action: { action: "none"   },
         show_popup:  false
       };
+
+      // Se NON è custom_card, togli la chiave card se esiste
+      if (newType !== "custom_card" && "card" in ents[i]) {
+        delete ents[i].card;
+      }
     }
 
     else {
@@ -347,6 +353,7 @@ class HaDashboardSidebarEditor extends LitElement {
             this._pendingYaml[i] = yamlCurrent;
           }
         }
+
 
         return html`
           <div class="divider" style="display: flex; align-items: center; padding: 0;">
@@ -540,25 +547,6 @@ class HaDashboardSidebarEditor extends LitElement {
                 }}>
               </ha-selector>
             ` : ""}
-            <!-- Hold Action -->
-            <div class="field-label">Hold Action</div>
-            <ha-selector class="full" .hass=${this.hass}
-              .selector=${{ ui_action: {} }}
-              .value=${ent.hold_action || { action: "none" }}
-              @value-changed=${e => this._row(i, "hold_action", e.detail.value)}>
-            </ha-selector>
-            ${ent.hold_action?.action === "more-info" ? html`
-              <div class="field-label">Show entity (optional)</div>
-              <ha-selector class="full" .hass=${this.hass}
-                .selector=${{ entity: {} }}
-                .value=${ent.hold_action.entity || ""}
-                @value-changed=${e => {
-                  const updated = { ...(ent.hold_action || { action: "more-info" }) };
-                  updated.entity = e.detail.value;
-                  this._row(i, "hold_action", updated);
-                }}>
-              </ha-selector>
-            ` : ""}
           </details>
         </div>
       `;
@@ -618,23 +606,6 @@ class HaDashboardSidebarEditor extends LitElement {
       margin: 6px 0;
       border-radius: 25px;
 
-    }
-    .divider-actions ha-icon {
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .divider-actions ha-icon[disabled] {
-      pointer-events: none;
-      opacity: 0.3;
-    }
-    .divider-delete {
-      cursor: pointer;
-      margin-left: 12px;
-      color: #ff5555;
-      transition: filter 0.15s;
-    }
-    .divider-delete:hover {
-      filter: brightness(1.5);
     }
 
     .row,
@@ -2155,21 +2126,11 @@ class HaDashboardSidebar extends LitElement {
       };
       window.addEventListener('click', onClickAway, { once: true });
   }
-  async _renderEntityExpanded(entity) {
-    const clone = { ...entity, collapsed: false };
-
-    if (clone.type === 'custom_card' && clone.card?.type) {
-      const helpers = await window.loadCardHelpers?.();
-      const el = await helpers.createCardElement(clone.card);
-      el.hass = this.hass;
-      el.setConfig?.(clone.card);
-      return el;
-    }
-
+  _renderEntityExpanded(entity) {
     const prev = this._collapsed;
-    this._collapsed = false;
-    const tpl = this._renderEntity(clone);
-    this._collapsed = prev;
+    this._collapsed = false;                // forza expanded
+    const tpl  = this._renderEntity(entity);
+    this._collapsed = prev;                 // ripristina
     return tpl;
   }
   _closeMiniPopup() {
@@ -2408,7 +2369,6 @@ class HaDashboardSidebar extends LitElement {
 
           /* patch layout verticale */
           try {
-              await card.updateComplete?.();
               if (card.shadowRoot) {
                   const style = document.createElement('style');
                   style.textContent = `
@@ -3236,17 +3196,30 @@ class HaDashboardSidebar extends LitElement {
   _renderPerson(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
+
     const entityPicture = state.attributes.entity_picture || 'https://www.gravatar.com/avatar/0?d=mp';
     const isHome = state.state.toLowerCase() === 'home';
     const imageClass = isHome ? 'color' : 'grayscale';
+
+    // Se tap_action non c'è, o è "more-info", o è "default", forzo il mio modal custom
+    const isTapDefault = !config.tap_action || ["more-info", "default"].includes(config.tap_action.action);
+
+    // Lo stesso per hold (opzionale)
+    const isHoldDefault = !config.hold_action || config.hold_action.action === "none";
+
     if (this._collapsed) {
       return html`
         <div class="person-wrapper">
           <div class="collapsed-clickable-box"
             tabindex="0"
-            @action=${e => this._handlePersonAction(e, config)}
-            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+            @click=${isTapDefault
+              ? () => this._handlePersonClick(config)
+              : e => this._handleAction({ detail: { action: "tap" }, stopPropagation: () => {} }, config)
+            }
+            @contextmenu=${isHoldDefault
+              ? (e) => { e.preventDefault(); this._handlePersonClick(config); }
+              : e => { e.preventDefault(); this._handleAction({ detail: { action: "hold" }, stopPropagation: () => {} }, config); }
+            }>
             <div class="avatar-container">
               <img
                 src="${entityPicture}"
@@ -3259,8 +3232,18 @@ class HaDashboardSidebar extends LitElement {
       `;
     }
 
+    // ESPANSA
     return html`
-      <div class="person" @click=${() => this._handlePersonClick(config)}>
+      <div class="person"
+        @click=${isTapDefault
+          ? () => this._handlePersonClick(config)
+          : e => this._handleAction({ detail: { action: "tap" }, stopPropagation: () => {} }, config)
+        }
+        @contextmenu=${isHoldDefault
+          ? (e) => { e.preventDefault(); this._handlePersonClick(config); }
+          : e => { e.preventDefault(); this._handleAction({ detail: { action: "hold" }, stopPropagation: () => {} }, config); }
+        }
+      >
         <img
           src="${entityPicture}"
           alt="${config.name || state.attributes.friendly_name}"
@@ -3273,6 +3256,7 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
+
   _getPersonStateLabel(state) {
     const translations = {
       home: {
@@ -3374,8 +3358,6 @@ class HaDashboardSidebar extends LitElement {
     this._configuredWidth  = config.width  || null;
     this._configuredHeight = config.height || null;
   }
-
-
 
   render() {
     if (!this.hass || !this.config) return html``;
