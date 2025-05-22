@@ -1,33 +1,68 @@
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
 import { loadHaComponents, DEFAULT_HA_COMPONENTS } from "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
 import { LitElement, html, css, nothing } from "https://unpkg.com/lit@2.8.0/index.js?module";
-function bindActionHandler(el, { hasHold = false} = {}) {
-  if (el.__boundActionHandler) return;
+function bindActionHandler(el, { hasHold = false } = {}) {
+  // Remove existing handlers before adding new ones
+  if (el.__boundActionHandler) {
+    if (el.__startHandler) {
+      el.removeEventListener("mousedown", el.__startHandler);
+      el.removeEventListener("touchstart", el.__startHandler);
+    }
+    if (el.__endHandler) {
+      el.removeEventListener("mouseup", el.__endHandler);
+      el.removeEventListener("touchend", el.__endHandler);
+    }
+  }
+
   el.__boundActionHandler = true;
-
+  el._lastActionType = null;
+  el._actionHandlerHeld = false;
   let timer;
-  let start;
 
-  el.addEventListener('mousedown', (ev) => {
-    start = ev.timeStamp;
-    timer = setTimeout(() => {
-      fireAction(el, 'hold');
-    }, 500);
-  });
+  const start = (ev) => {
+    // Prevent default behavior for touchstart to avoid issues on some browsers
+    if (ev.type === "touchstart") {
+      ev.preventDefault();
+    }
 
-  el.addEventListener('mouseup', (ev) => {
+    el._actionHandlerHeld = false;
+    el._lastActionType = null;
+
+    if (hasHold) {
+      timer = setTimeout(() => {
+        el._actionHandlerHeld = true;
+        el._lastActionType = "hold";
+        fireAction(el, "hold");
+      }, 500);
+    }
+  };
+
+  const end = (ev) => {
     clearTimeout(timer);
-    const duration = ev.timeStamp - start;
-    if (hasHold && duration >= 500) return;
-    fireAction(el, 'tap');
-  });
+    // TAP deve partire SOLO se NON è già stato fatto l'HOLD
+    if (!el._actionHandlerHeld) {
+      el._lastActionType = "tap";
+      fireAction(el, "tap");
+    }
+  };
+
+  // Store handlers for future cleanup
+  el.__startHandler = start;
+  el.__endHandler = end;
+
+  el.addEventListener("mousedown", start);
+  el.addEventListener("touchstart", start, { passive: false });
+  el.addEventListener("mouseup", end);
+  el.addEventListener("touchend", end);
 
   function fireAction(target, type) {
-    target.dispatchEvent(new CustomEvent('action', {
-      detail: { action: type },
-      bubbles: true,
-      composed: true,
-    }));
+    target.dispatchEvent(
+      new CustomEvent("action", {
+        detail: { action: type },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 }
 
@@ -87,6 +122,19 @@ class HaDashboardSidebarEditor extends LitElement {
 
   getConfig() {
     return this._config;
+  }
+  _moveUp(i) {
+    if (i <= 0) return;
+    const ents = [...this._config.entities];
+    [ents[i - 1], ents[i]] = [ents[i], ents[i - 1]];
+    this._push("entities", ents);
+  }
+
+  _moveDown(i) {
+    if (i >= this._config.entities.length - 1) return;
+    const ents = [...this._config.entities];
+    [ents[i], ents[i + 1]] = [ents[i + 1], ents[i]];
+    this._push("entities", ents);
   }
   _toggleExpander(index) {
     this._expandedIndex = this._expandedIndex === index ? null : index;
@@ -301,9 +349,31 @@ class HaDashboardSidebarEditor extends LitElement {
         }
 
         return html`
-          <div class="divider">
-            <b>Card ${i + 1}</b><span></span>
-            <ha-icon icon="mdi:close-circle" class="delete" @click=${() => this._del(i)} title="Remove"></ha-icon>
+          <div class="divider" style="display: flex; align-items: center; padding: 0;">
+            <b style="margin-right: 12px;">Card ${i + 1}</b>
+            <span class="divider-actions" style="display: flex; gap: 4px;">
+            </span>
+            <div style="flex: 1 1 auto;"></div>
+            <ha-icon
+              icon="mdi:arrow-up-bold"
+              class="move"
+              ?disabled=${i === 0}
+              title="Sposta su"
+              @click=${() => this._moveUp(i)}
+            ></ha-icon>
+            <ha-icon
+              icon="mdi:arrow-down-bold"
+              class="move"
+              ?disabled=${i === this._config.entities.length - 1}
+              title="Sposta giù"
+              @click=${() => this._moveDown(i)}
+            ></ha-icon>
+            <ha-icon
+              icon="mdi:close-circle"
+              class="delete divider-delete"
+              @click=${() => this._del(i)}
+              title="Remove"
+            ></ha-icon>
           </div>
           <div class="row">
             <div class="column" style="min-width: 50px;">
@@ -548,6 +618,23 @@ class HaDashboardSidebarEditor extends LitElement {
       margin: 6px 0;
       border-radius: 25px;
 
+    }
+    .divider-actions ha-icon {
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .divider-actions ha-icon[disabled] {
+      pointer-events: none;
+      opacity: 0.3;
+    }
+    .divider-delete {
+      cursor: pointer;
+      margin-left: 12px;
+      color: #ff5555;
+      transition: filter 0.15s;
+    }
+    .divider-delete:hover {
+      filter: brightness(1.5);
     }
 
     .row,
@@ -1981,65 +2068,60 @@ class HaDashboardSidebar extends LitElement {
     e.stopPropagation();
 
     if (config.show_popup) {
-      console.log("[ACTION] show_popup attivo → apertura mini popup");
       this._openMiniPopup(config);
       return;
     }
 
-    const action = e.detail?.action || 'tap';
+    const action = e.detail?.action || "tap";
     const actionKey = `${action}_action`;
     const actionConfig = config[actionKey];
-
-    console.log(`[ACTION] Tipo: ${action} → config:`, actionConfig);
-
-    if (!actionConfig || actionConfig.action === 'none') {
-      console.warn("[ACTION] Nessuna azione configurata o action = 'none'");
+    if (!actionConfig || actionConfig.action === "none") {
       return;
     }
 
     switch (actionConfig.action) {
-      case 'toggle':
-        console.log("[ACTION] toggle", config.entity);
-        this.hass.callService(config.entity.split('.')[0], 'toggle', {
-          entity_id: config.entity
+      case "toggle":
+        this.hass.callService(config.entity.split(".")[0], "toggle", {
+          entity_id: config.entity,
         });
         break;
 
-      case 'perform_action':
-      case 'call-service':
-        const [domain, service] = actionConfig.service.split('.');
-        const data = actionConfig.service_data || {};
-        if (data.entity_id === "entity") data.entity_id = config.entity;
-
-        console.log(`[ACTION] call-service → ${domain}.${service}`, {
-          ...data,
-          entity_id: data.entity_id || config.entity
-        });
-
-        this.hass.callService(domain, service, {
-          ...data,
-          entity_id: data.entity_id || config.entity
-        }, actionConfig.target);
+      case "perform_action":
+      case "call-service":
+        {
+          const [domain, service] = actionConfig.service.split(".");
+          const data = actionConfig.service_data || {};
+          if (data.entity_id === "entity") data.entity_id = config.entity;
+          this.hass.callService(
+            domain,
+            service,
+            {
+              ...data,
+              entity_id: data.entity_id || config.entity,
+            },
+            actionConfig.target
+          );
+        }
         break;
 
-      case 'navigate':
-        console.log("[ACTION] navigate to", actionConfig.navigation_path);
+      case "navigate":
         window.location.href = actionConfig.navigation_path;
         break;
 
-      case 'url':
-        console.log("[ACTION] open url", actionConfig.url_path);
-        window.open(actionConfig.url_path, '_blank');
+      case "url":
+        window.open(actionConfig.url_path, "_blank");
         break;
 
-      case 'more-info':
+      case "more-info":
       default:
-        const entityId = actionConfig.entity || config.entity;
-        console.log("[ACTION] more-info su", entityId);
-        this._showMoreInfo(entityId);
+        {
+          const entityId = actionConfig.entity || config.entity;
+          this._showMoreInfo(entityId);
+        }
         break;
     }
   }
+
 
   _updateTime() {
     this._timeInterval = setInterval(() => {
@@ -2374,12 +2456,13 @@ class HaDashboardSidebar extends LitElement {
           if (this._collapsed) {
               return html`
                   <div class="card custom-card">
-                      <div class="collapsed-clickable-box"
-                           tabindex="0"
-                           @click=${e => this._handleAction(e, entity)}
-                           @contextmenu=${e => this._handleHoldAction(e, entity)}>
-                          <div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
-                      </div>
+                    <div class="collapsed-clickable-box"
+                         tabindex="0"
+                         @action=${e => this._handleAction(e, entity)}
+                         @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
+                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                      <div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
+                    </div>
                   </div>`;
           }
 
@@ -2413,21 +2496,23 @@ class HaDashboardSidebar extends LitElement {
           if (this._collapsed) {
               return html`
                   <div class="card entity-card">
-                      <div class="collapsed-clickable-box"
-                           tabindex="0"
-                           @click=${e => this._handleAction(e, entity)}
-                           @contextmenu=${e => this._handleHoldAction(e, entity)}>
-                          <div class="icon">${this._renderIcon(entity, 'entity')}</div>
-                      </div>
+                    <div class="collapsed-clickable-box"
+                         tabindex="0"
+                         @action=${e => this._handleAction(e, entity)}
+                         @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
+                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                      <div class="icon">${this._renderIcon(entity, 'entity')}</div>
+                    </div>
                   </div>`;
           }
 
           /* expanded → card nativa in colonna caricata async */
           return html`
               <div class="card entity-card"
-                   @click=${e => this._handleAction(e, entity)}
-                   @contextmenu=${e => this._handleHoldAction(e, entity)}>
-                  ${until(this._buildEntityCard(entity.entity), html`<span style="opacity:.6;">…</span>`)}
+                   @action=${e => this._handleAction(e, entity)}
+                   @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
+                   @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                ${until(this._buildEntityCard(entity.entity), html`<span style="opacity:.6;">…</span>`)}
               </div>`;
       }
 
@@ -2463,8 +2548,9 @@ class HaDashboardSidebar extends LitElement {
         <div class="card cover">
           <div class="collapsed-clickable-box"
                tabindex="0"
-               @click=${e => this._handleAction(e, config)}
-               @contextmenu=${e => this._handleHoldAction(e, config)}>
+               @action=${e => this._handleAction(e, config)}
+               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, 'cover')}
           </div>
         </div>
@@ -2566,8 +2652,9 @@ class HaDashboardSidebar extends LitElement {
         <div class="card climate">
           <div class="collapsed-clickable-box"
                tabindex="0"
-               @action=${(e) => this._handleAction(e, config)}
-               @mousedown=${(e) => this._bindActionHandler(e.currentTarget, config)}>
+               @action=${e => this._handleAction(e, config)}
+               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, 'climate')}
           </div>
         </div>
@@ -2684,16 +2771,14 @@ class HaDashboardSidebar extends LitElement {
     }
     if (this._collapsed) {
       return html`
-        <div class="card light"
-             tabindex="0"
-             role="button"
-             @action=${(e) => this._handleAction(e, config)}
-             @mousedown=${(e) => this._bindActionHandler(e.currentTarget, config)}
-             @mouseup=${(e) => this._bindActionHandler(e.currentTarget, config)}
-             @dblclick=${(e) => this._bindActionHandler(e.currentTarget, config)}
-             }}>
-          ${this._renderIcon(config, "light")}
-        </div>
+      <div class="card light"
+           tabindex="0"
+           role="button"
+           @action=${e => this._handleAction(e, config)}
+           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+           @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+        ${this._renderIcon(config, "light")}
+      </div>
       `;
     }
     return html`
@@ -2798,15 +2883,15 @@ class HaDashboardSidebar extends LitElement {
       <div class="card switch">
         ${this._collapsed
           ? html`
-              <div
-                class="collapsed-clickable-box"
-                tabindex="0"
-                @click=${e => this._handleAction(e, config)}
-                @contextmenu=${e => this._handleHoldAction(e, config)}
-              >
-                ${this._renderIcon(config, "switch")}
-              </div>
-            `
+            <div
+              class="collapsed-clickable-box"
+              tabindex="0"
+              @action=${e => this._handleAction(e, config)}
+              @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+              @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+            >
+              ${this._renderIcon(config, "switch")}
+            </div>`
           : html`
               <div class="switch-header" style="display:flex;flex-direction:column;align-items:center;text-align:center;">
                 <div class="value" @click=${e => e.stopPropagation()}>
@@ -2863,14 +2948,18 @@ class HaDashboardSidebar extends LitElement {
           ${name}
         </div>
         <button class="control-button"
-                @click=${e => {
-                  e.stopPropagation();
-                  if (hasCustomAction) {
-                    this._handleAction({ detail: { action: "button.press" }, stopPropagation: () => {} }, config);
-                  } else {
-                    this._callService(domain, service, config.entity);
-                  }
-                }}>
+          @action=${e => {
+            if (e.detail.action === "tap") {
+              // TAP: sempre button.press
+              this._handleAction({ detail: { action: "button.press" }, stopPropagation: () => {} }, config);
+            } else if (e.detail.action === "hold") {
+              // HOLD: segue la hold_action classica
+              this._handleAction({ detail: { action: "hold" }, stopPropagation: () => {} }, config);
+            }
+          }}
+          @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+        >
           <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
         </button>
       </div>
@@ -2890,16 +2979,17 @@ class HaDashboardSidebar extends LitElement {
 
     if (this._collapsed) {
       return html`
-        <div class="card fan">
-          <div
-            class="collapsed-clickable-box"
-            tabindex="0"
-            @click=${e => this._handleAction(e, config)}
-            @contextmenu=${e => this._handleHoldAction(e, config)}
-          >
-            ${this._renderIcon(config, "fan")}
-          </div>
+      <div class="card fan">
+        <div
+          class="collapsed-clickable-box"
+          tabindex="0"
+          @action=${e => this._handleAction(e, config)}
+          @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+        >
+          ${this._renderIcon(config, "fan")}
         </div>
+      </div>
       `;
     }
 
@@ -2976,17 +3066,18 @@ class HaDashboardSidebar extends LitElement {
 
     if (this._collapsed) {
       return html`
-        <div class="card media-player">
-          <div
-            class="collapsed-clickable-box"
-            style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
-            tabindex="0"
-            @click=${e => this._handleAction(e, config)}
-            @contextmenu=${e => this._handleHoldAction(e, config)}
-          >
-            ${this._renderIcon(config, "media_player")}
-          </div>
+      <div class="card media-player">
+        <div
+          class="collapsed-clickable-box"
+          style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
+          tabindex="0"
+          @action=${e => this._handleAction(e, config)}
+          @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+        >
+          ${this._renderIcon(config, "media_player")}
         </div>
+      </div>
       `;
     }
 
@@ -3079,21 +3170,24 @@ class HaDashboardSidebar extends LitElement {
         ${this._collapsed ? html`
           <div class="sensor-state collapsed-clickable-box ${isActive ? "active" : ""}"
             tabindex="0"
-            @click=${(e) => this._handleAction(e, config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+            @action=${e => this._handleAction(e, config)}
+            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${renderValue()}
           </div>
         ` : html`
           <div class="value"
             tabindex="0"
-            @click=${(e) => this._handleAction(e, config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+            @action=${e => this._handleAction(e, config)}
+            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${config.name || state.attributes.friendly_name}
           </div>
           <div class="sensor-state ${isActive ? "active" : ""}"
             tabindex="0"
-            @click=${(e) => this._handleAction(e, config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+            @action=${e => this._handleAction(e, config)}
+            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${renderValue()}
           </div>
         `}
@@ -3111,8 +3205,9 @@ class HaDashboardSidebar extends LitElement {
           <div class="collapsed-clickable-box"
                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"
                tabindex="0"
-               @click=${(e) => this._handleAction(e, config)}
-               @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+               @action=${e => this._handleAction(e, config)}
+               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             <div class="weather-icon ${weatherIcon.animation}">
               ${weatherIcon.icon}
             </div>
@@ -3123,8 +3218,9 @@ class HaDashboardSidebar extends LitElement {
           </div>
           <div class="value"
                tabindex="0"
-               @click=${(e) => this._handleAction(e, config)}
-               @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+               @action=${e => this._handleAction(e, config)}
+               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${state.attributes.temperature}°${state.attributes.temperature_unit || ""}
           </div>
           <div class="label">${config.name || weatherState}</div>
@@ -3148,8 +3244,9 @@ class HaDashboardSidebar extends LitElement {
         <div class="person-wrapper">
           <div class="collapsed-clickable-box"
             tabindex="0"
-            @click=${() => this._handlePersonClick(config)}
-            @contextmenu=${(e) => this._handleHoldAction(e, config)}>
+            @action=${e => this._handlePersonAction(e, config)}
+            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             <div class="avatar-container">
               <img
                 src="${entityPicture}"
