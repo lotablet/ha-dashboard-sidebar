@@ -343,19 +343,15 @@ class HaDashboardSidebarEditor extends LitElement {
       <div class="big-divider"></div>
       ${this._config.entities.map((ent, i) => {
         if (ent.type === "custom_card") {
-          if (!this._pendingYaml || typeof this._pendingYaml !== "object") {
-            this._pendingYaml = {};
-          }
-          const yamlCurrent = window.jsyaml?.dump?.(ent.card) || "";
+          // Sincronizzazione automatica editor <-- AGGIUNGI QUESTO
+          const yamlCurrent = ent.card ? window.jsyaml?.dump?.(ent.card) : "";
           if (
             typeof this._pendingYaml[i] !== "string" ||
-            this._pendingYaml[i].trim() === "" ||
-            (ent.card && this._pendingYaml[i].trim() !== yamlCurrent.trim())
+            this._pendingYaml[i].trim() !== yamlCurrent.trim()
           ) {
             this._pendingYaml[i] = yamlCurrent;
           }
         }
-
 
         return html`
           <div class="divider" style="display: flex; align-items: center; padding: 0;">
@@ -503,12 +499,16 @@ class HaDashboardSidebarEditor extends LitElement {
                       ></ha-yaml-editor>
                       <mwc-button
                         outlined dense
-                        @click=${() => {
+                        @click=${async () => {
                           try {
-                            if (typeof this._pendingYaml[i] !== "string") {
-                              this._pendingYaml[i] = window.jsyaml?.dump?.(this._pendingYaml[i]) || "";
+                            const yamlEditor = this.renderRoot.querySelectorAll('ha-yaml-editor')[i];
+                            let yamlString = yamlEditor ? yamlEditor.value : this._pendingYaml[i];
+                            if (typeof yamlString !== "string") {
+                              yamlString = window.jsyaml?.dump?.(yamlString) || "";
                             }
-                            let parsed = window.jsyaml?.load(this._pendingYaml[i]);
+                            const entBefore = this._config.entities[i];
+                            let oldYaml = entBefore?.card ? window.jsyaml?.dump?.(entBefore.card) : "(nessun card presente)";
+                            let parsed = window.jsyaml?.load(yamlString);
                             if (Array.isArray(parsed)) {
                               if (parsed.length === 1) {
                                 parsed = parsed[0];
@@ -517,19 +517,78 @@ class HaDashboardSidebarEditor extends LitElement {
                                 return;
                               }
                             }
-                            if (!parsed || typeof parsed !== "object") throw new Error();
+                            if (!parsed || typeof parsed !== "object") throw new Error("YAML non oggetto!");
 
-                            const ents = [...this._config.entities];
-                            ents[i].card = parsed;
+                            // 4. Cancella vecchio card (reference nuova)
+                            let ents = this._config.entities.map((ent, idx) => {
+                              if (idx === i) {
+                                let newEnt = { ...ent };
+                                delete newEnt.card;
+                                return newEnt;
+                              }
+                              return ent;
+                            });
                             this._push("entities", ents);
+                            // 5. Attendi 1 secondo
+                            await new Promise(res => setTimeout(res, 1000));
+
+                            // 6. Leggi lo stato attuale della card dopo cancellazione
+                            const entMid = this._config.entities[i];
+                            let midYaml = entMid?.card ? window.jsyaml?.dump?.(entMid.card) : "(nessun card presente)";
+
+                            // 7. Inserisci il nuovo YAML
+                            ents = this._config.entities.map((ent, idx) => {
+                              if (idx === i) {
+                                let newEnt = { ...ent, card: parsed };
+                                return newEnt;
+                              }
+                              return ent;
+                            });
+                            this._push("entities", ents);
+                            // 8. Conferma salvataggio
                             this._pendingYaml[i] = window.jsyaml?.dump?.(parsed) || "";
                             alert("YAML applied!");
                           } catch (e) {
-                            alert("YAML non valido");
+                            alert("YAML non valido: " + e);
                           }
                         }}
                         style="margin-top:8px;width:max-content;">
                         APPLY
+                      </mwc-button>
+                      <mwc-button
+                        outlined dense
+                        @click=${() => {
+                          const yamlCurrent = ent.card ? window.jsyaml?.dump?.(ent.card) : "";
+                          this._pendingYaml[i] = yamlCurrent;
+                          setTimeout(() => {
+                            const editors = this.renderRoot.querySelectorAll('ha-yaml-editor');
+                            const yamlEditor = editors[i];
+                            if (yamlEditor) {
+                              yamlEditor.value = yamlCurrent;
+                              if (yamlEditor.shadowRoot) {
+                                const codeEditor = yamlEditor.shadowRoot.querySelector('ha-code-editor');
+                                if (codeEditor) {
+                                  codeEditor.value = yamlCurrent;
+                                  codeEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                                  codeEditor.dispatchEvent(new Event('change', { bubbles: true }));
+                                  if (codeEditor.editor && typeof codeEditor.editor.setValue === "function") {
+                                    codeEditor.editor.setValue(yamlCurrent);
+                                  }
+                                } else {
+                                }
+                              } else {
+                              }
+
+                              setTimeout(() => {
+                              }, 100);
+                            } else {
+                            }
+                          }, 0);
+
+                          this.requestUpdate();
+                        }}
+                        style="margin-top:8px;width:max-content;">
+                        🔁 Sync YAML
                       </mwc-button>
                     </div>
                     <div style="flex: 2;min-width: 20px;max-width:150px;">
