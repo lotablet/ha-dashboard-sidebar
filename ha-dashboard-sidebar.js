@@ -135,10 +135,6 @@ class HaDashboardSidebarEditor extends LitElement {
         'it': 'YAML non valido: ',
         'en': 'Invalid YAML: '
       },
-      'yaml_applied': {
-        'it': 'YAML applicato!',
-        'en': 'YAML applied!'
-      },
       'yaml_parser_unavailable': {
         'it': 'YAML parser non disponibile!',
         'en': 'YAML parser unavailable!'
@@ -359,7 +355,6 @@ class HaDashboardSidebarEditor extends LitElement {
 
     // Hide YAML editor after successful apply
     this._hideYamlEditor(index);
-    alert(this._t('yaml_applied'));
   }
 
   // Get lovelace config for card picker
@@ -1091,50 +1086,18 @@ class HaDashboardSidebarEditor extends LitElement {
                         </div>
                       ` : html`
                         <div style="margin-top: 8px; padding: 12px; background: var(--card-background-color); border-radius: 6px;">
-                          <div style="margin-bottom: 12px; font-weight: 500;">Card Type: ${ent.card.type || 'Unknown'}</div>
+                          <div style="margin-bottom: 12px; font-weight: 500;font-size:15px">Configured Card: ${ent.card.type || 'Unknown'}</div>
                           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                             <mwc-button outlined dense @click=${() => this._editCard(i)}>
                               ✏️ Edit Card
                             </mwc-button>
-                            <mwc-button outlined dense @click=${() => this._showCardYaml(i)}>
-                              📝 View YAML
-                            </mwc-button>
                             <mwc-button outlined dense @click=${() => this._removeCard(i)}>
                               🗑️ Remove
-                            </mwc-button>
-                            <mwc-button outlined dense @click=${() => this._openCardPicker(i)}>
-                              🔄 Replace
                             </mwc-button>
                           </div>
                         </div>
                       `}
                     </div>
-
-                    ${this._showYamlEditor && this._showYamlEditor[i] ? html`
-                      <div class="yaml-entry">
-                        <div class="field-label">Card YAML (Advanced)</div>
-                        <ha-code-editor
-                          .hass=${this.hass}
-                          .value=${this._pendingYaml[i] || (ent.card ? window.jsyaml?.dump?.(ent.card, { indent: 2 }) || "" : "type: entity\nentity: \n")}
-                          .readOnly=${false}
-                          @value-changed=${e => {
-                            if (!this._pendingYaml) this._pendingYaml = {};
-                            this._pendingYaml[i] = e.detail.value;
-                          }}
-                          style="height: 250px; margin-top: 8px; border: 1px solid var(--divider-color);"
-                          dir="ltr"
-                        ></ha-code-editor>
-                        <div style="margin-top: 8px; display: flex; gap: 8px;">
-                          <mwc-button raised dense @click=${() => this._applyYaml(i)}>
-                            Apply YAML
-                          </mwc-button>
-                          <mwc-button outlined dense @click=${() => this._hideYamlEditor(i)}>
-                            ✕ Close YAML
-                          </mwc-button>
-                        </div>
-                      </div>
-                    ` : ""}
-
                     </div>
                     <div style="flex: 2;min-width: 20px;max-width:150px;">
                       <div class="field-label">Collapsed</div>
