@@ -99,11 +99,81 @@ class HaDashboardSidebarEditor extends LitElement {
     this._pendingYaml = {};
     this._heightRaw = "";
     this._expandedIndex = null;
+    this._showYamlEditor = {};
+    this._editingCardIndex = null;
+    this._showCardPicker = {};
+    // Add card editing mode
+    this._cardEditingMode = false;
+    this._cardEditingIndex = null;
     if (!window.jsyaml || !window.jsyaml.dump) {
       import("https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/+esm")
         .then(mod => window.jsyaml = mod)
         .catch(() => console.warn("js-yaml non caricato"));
     }
+  }
+
+  // Localization function
+  _t(key) {
+    const translations = {
+      'apply_empty_yaml': {
+        'it': 'Per favore inserisci del codice YAML valido nell\'editor prima di fare Apply.',
+        'en': 'Please enter valid YAML code in the editor before applying.'
+      },
+      'multiple_cards_error': {
+        'it': 'Non puoi incollare più di una card alla volta.',
+        'en': 'You cannot paste more than one card at a time.'
+      },
+      'yaml_not_object': {
+        'it': 'YAML non oggetto!',
+        'en': 'YAML is not an object!'
+      },
+      'yaml_empty_object': {
+        'it': 'YAML non può essere un oggetto vuoto! Inserisci una configurazione valida.',
+        'en': 'YAML cannot be an empty object! Enter a valid configuration.'
+      },
+      'yaml_invalid': {
+        'it': 'YAML non valido: ',
+        'en': 'Invalid YAML: '
+      },
+      'yaml_applied': {
+        'it': 'YAML applicato!',
+        'en': 'YAML applied!'
+      },
+      'yaml_parser_unavailable': {
+        'it': 'YAML parser non disponibile!',
+        'en': 'YAML parser unavailable!'
+      },
+      'sync_no_card': {
+        'it': 'Non c\'è ancora una card da sincronizzare. Prima applica il tuo YAML con il pulsante ⬆️ YAML → UI, poi potrai usare ⬇️ UI → YAML per sincronizzare dall\'editor UI.',
+        'en': 'There is no card to sync yet. First apply your YAML with the ⬆️ YAML → UI button, then you can use ⬇️ UI → YAML to sync from the UI editor.'
+      },
+      'sync_empty_card': {
+        'it': 'La card esistente è vuota o non valida. Non c\'è niente da sincronizzare. Prima applica un YAML valido con ⬆️ YAML → UI.',
+        'en': 'The existing card is empty or invalid. There is nothing to sync. First apply valid YAML with ⬆️ YAML → UI.'
+      },
+      'sync_invalid_data': {
+        'it': 'La card esistente non contiene dati validi. Prima applica un YAML valido con ⬆️ YAML → UI.',
+        'en': 'The existing card does not contain valid data. First apply valid YAML with ⬆️ YAML → UI.'
+      },
+      'sync_invalid_yaml': {
+        'it': 'La card esistente contiene YAML non valido. Prima applica un YAML valido con ⬆️ YAML → UI.',
+        'en': 'The existing card contains invalid YAML. First apply valid YAML with ⬆️ YAML → UI.'
+      },
+      'sync_success': {
+        'it': 'YAML sincronizzato dalla card esistente all\'editor!',
+        'en': 'YAML synchronized from existing card to editor!'
+      },
+      'sync_error': {
+        'it': 'Errore durante la sincronizzazione: ',
+        'en': 'Error during synchronization: '
+      }
+    };
+
+    // Get current language from Home Assistant or default to Italian
+    const lang = this.hass?.language || this.hass?.locale?.language || 'it';
+    const langCode = lang.startsWith('en') ? 'en' : 'it';
+
+    return translations[key]?.[langCode] || translations[key]?.['it'] || key;
   }
 
   setConfig(cfg) {
@@ -253,30 +323,559 @@ class HaDashboardSidebarEditor extends LitElement {
     this._push("entities", ents);
   }
   _applyYaml(index) {
-    let parsed = this._pendingYaml || "";
+    if (!window.jsyaml || !window.jsyaml.load) {
+      alert(this._t('yaml_parser_unavailable'));
+      return;
+    }
 
-    if (typeof parsed === "string") {
-      try {
-        parsed = window.jsyaml.load(parsed);
-      } catch (e) {
-        alert("Errore parsing YAML:\n" + e.message);
-        return;
-      }
+    const yamlContent = this._pendingYaml[index] || '';
+
+    if (!yamlContent.trim()) {
+      alert(this._t('apply_empty_yaml'));
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = window.jsyaml.load(yamlContent);
+    } catch (e) {
+      alert(this._t('yaml_invalid') + e.message);
+      return;
     }
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      alert("Il YAML deve essere un oggetto (chiave-valore).");
-      console.error("Tipo errato o YAML non oggetto", parsed);
+      alert(this._t('yaml_not_object'));
+      return;
+    }
+
+    if (Object.keys(parsed).length === 0) {
+      alert(this._t('yaml_empty_object'));
       return;
     }
 
     const ents = [...this._config.entities];
     ents[index] = { ...ents[index], type: "custom_card", card: parsed };
     this._push("entities", ents);
-    alert("Sended to yaml!");
+
+    // Hide YAML editor after successful apply
+    this._hideYamlEditor(index);
+    alert(this._t('yaml_applied'));
+  }
+
+  // Get lovelace config for card picker
+  _getLovelaceConfig() {
+    // Create a more complete lovelace-like object that hui-card-picker expects
+    if (!this._lovelaceConfig) {
+      // Try to get main lovelace config as reference
+      const mainLovelace = this.hass?.lovelace || this.hass?.panels?.lovelace;
+
+      this._lovelaceConfig = {
+        mode: mainLovelace?.mode || "storage",
+        title: "Dashboard Sidebar",
+        views: [{
+          title: "Sidebar View",
+          cards: [],
+          path: "sidebar_view",
+          icon: "mdi:view-dashboard"
+        }],
+        // Add essential methods that hui-card-picker expects
+        saveConfig: async () => {},
+        setEditMode: () => {},
+        editMode: true,
+        enableFullEditMode: () => true,
+        // Add config property for container cards
+        config: {
+          title: "Dashboard Sidebar",
+          views: [{
+            title: "Sidebar View",
+            cards: [],
+            path: "sidebar_view"
+          }],
+          // Add standard card types that should be available
+          resources: [],
+          // Add background and theme info
+          background: mainLovelace?.config?.background || undefined,
+          theme: mainLovelace?.config?.theme || undefined
+        },
+        // Add rawConfig for hui-card-picker
+        rawConfig: {
+          title: "Dashboard Sidebar",
+          views: [{
+            title: "Sidebar View",
+            cards: [],
+            path: "sidebar_view"
+          }]
+        },
+        // Add required properties
+        language: this.hass?.language || "en",
+        locale: this.hass?.locale || {},
+        _generation: 1,
+        // Add hass reference
+        hass: this.hass,
+        // Add panel info if available
+        panel: mainLovelace?.panel || {
+          component_name: "lovelace",
+          config: null,
+          icon: "mdi:view-dashboard",
+          title: "Dashboard Sidebar",
+          url_path: "sidebar"
+        }
+      };
+
+      // Add Home Assistant config if available
+      if (this.hass && this.hass.config) {
+        this._lovelaceConfig.config.latitude = this.hass.config.latitude;
+        this._lovelaceConfig.config.longitude = this.hass.config.longitude;
+        this._lovelaceConfig.config.elevation = this.hass.config.elevation;
+        this._lovelaceConfig.config.unit_system = this.hass.config.unit_system;
+        this._lovelaceConfig.config.time_zone = this.hass.config.time_zone;
+        this._lovelaceConfig.config.currency = this.hass.config.currency;
+        this._lovelaceConfig.config.country = this.hass.config.country;
+      }
+    }
+
+    return this._lovelaceConfig;
+  }
+
+  // Handle card picked from hui-card-picker
+  _handleCardPicked(index, event) {
+    event.stopPropagation(); // Prevent event from bubbling up
+    const config = event.detail.config;
+
+    if (config) {
+      const ents = [...this._config.entities];
+      ents[index] = { ...ents[index], type: "custom_card", card: config };
+      this._push("entities", ents);
+      this.requestUpdate();
+    }
+  }
+
+  // Handle card config changed from hui-card-element-editor
+  _handleCardConfigChanged(index, event) {
+    event.stopPropagation(); // Prevent event from bubbling up
+    const config = event.detail.config;
+
+    if (config) {
+      const ents = [...this._config.entities];
+      ents[index] = { ...ents[index], card: config };
+      this._push("entities", ents);
+      this.requestUpdate();
+    }
+  }
+
+  // Remove card
+  _removeCard(index) {
+    const ents = [...this._config.entities];
+    if (ents[index]) {
+      delete ents[index].card;
+      this._push("entities", ents);
+      this.requestUpdate();
+    }
+  }
+
+  // Show YAML editor
+  _showCardYaml(index) {
+    if (!this._showYamlEditor) this._showYamlEditor = {};
+    if (!this._pendingYaml) this._pendingYaml = {};
+
+    this._showYamlEditor[index] = true;
+
+    // Always refresh YAML content from current card
+    const entity = this._config.entities[index];
+    if (entity && entity.card && window.jsyaml && window.jsyaml.dump) {
+      this._pendingYaml[index] = window.jsyaml.dump(entity.card, { indent: 2 });
+    } else {
+      // Default YAML for new cards
+      this._pendingYaml[index] = "type: entity\nentity: \n";
+    }
+
+    this.requestUpdate();
+  }
+
+  // Hide YAML editor
+  _hideYamlEditor(index) {
+    if (this._showYamlEditor) {
+      this._showYamlEditor[index] = false;
+    }
+    // Clean up pending YAML when closing
+    if (this._pendingYaml && this._pendingYaml[index]) {
+      delete this._pendingYaml[index];
+    }
+    this.requestUpdate();
+  }
+
+  // Handle YAML changed in advanced editor (deprecated - using inline handler now)
+  _handleYamlChanged(index, event) {
+    try {
+      const value = event.detail.value;
+      if (value && typeof value === "object") {
+        const ents = [...this._config.entities];
+        ents[index] = { ...ents[index], card: value };
+        this._push("entities", ents);
+      }
+    } catch (e) {
+      // Silent error handling
+    }
+  }
+
+  // Open card picker in integrated mode
+  _openCardPicker(index) {
+    this._enterCardEditingMode(index);
+  }
+
+  // Edit existing card in integrated mode
+  _editCard(index) {
+    this._enterCardEditingMode(index);
+  }
+
+  // Close card dialog
+  _closeCardDialog() {
+    this._editingCardIndex = null;
+    this._showCardPicker = {};
+    this.requestUpdate();
+  }
+
+  // Render card dialog
+  _renderCardDialog() {
+    if (this._editingCardIndex === null) return "";
+
+    const index = this._editingCardIndex;
+    const entity = this._config.entities[index];
+    const showPicker = this._showCardPicker[index];
+
+    return html`
+      <ha-dialog
+        open
+        @closed=${this._closeCardDialog}
+        .heading=${showPicker ? "Choose Card Type" : "Edit Card"}
+        hideActions
+      >
+                 <div slot="content">
+           ${showPicker || !entity.card ? html`
+             <div style="margin-bottom: 16px;">
+               ${this._renderCardPicker(index)}
+             </div>
+           ` : html`
+             <div style="margin-bottom: 16px;">
+               ${this._renderCardEditor(index, entity.card)}
+             </div>
+           `}
+        </div>
+        <mwc-button slot="secondaryAction" @click=${this._closeCardDialog}>
+          Cancel
+        </mwc-button>
+        <mwc-button slot="primaryAction" @click=${this._closeCardDialog}>
+          Done
+        </mwc-button>
+      </ha-dialog>
+    `;
+  }
+
+  // Handle card picked in dialog
+  _handleCardPickedInDialog(index, event) {
+    event.stopPropagation();
+    const config = event.detail.config;
+
+    if (config) {
+      const ents = [...this._config.entities];
+      ents[index] = { ...ents[index], type: "custom_card", card: config };
+      this._push("entities", ents);
+      this.requestUpdate();
+
+      // Switch to editor mode after picking
+      this._showCardPicker[index] = false;
+      this.requestUpdate();
+    }
+  }
+
+  // Handle card config changed in dialog
+  _handleCardConfigChangedInDialog(index, event) {
+    event.stopPropagation();
+    const config = event.detail.config;
+
+    if (config) {
+      const ents = [...this._config.entities];
+      ents[index] = { ...ents[index], card: config };
+      this._push("entities", ents);
+      this.requestUpdate();
+    }
+  }
+
+  // Check if hui-card-picker is available
+  _isCardPickerAvailable() {
+    return customElements.get('hui-card-picker') !== undefined;
+  }
+
+  // Safely render card picker with error handling
+  _renderCardPicker(index) {
+    // Check if hui-card-picker is available
+    if (!this._isCardPickerAvailable()) {
+      return this._renderYamlFallback(index, "Card picker not available in this Home Assistant version");
+    }
+
+    try {
+      return html`
+        <div id="card-picker-container-${index}" style="position: relative; min-height: 300px;">
+          <hui-card-picker
+            .hass=${this.hass}
+            .lovelace=${this._getLovelaceConfig()}
+            @config-changed=${e => this._handleCardPickedInDialog(index, e)}
+            @error=${e => this._handleCardPickerError(e)}
+            style="display: block; width: 100%; min-height: 300px; border: 1px solid var(--divider-color);"
+          ></hui-card-picker>
+
+          <!-- Alternative: Try simple card type buttons -->
+          <div style="margin-top: 16px; padding: 16px; border: 1px solid var(--divider-color); border-radius: 4px;">
+            <div style="margin-bottom: 8px; font-weight: bold;">Quick Card Types:</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${["entities", "entity", "button", "picture", "conditional", "history-graph", "statistics-graph", "sensor", "gauge", "markdown"].map(cardType => html`
+                <mwc-button
+                  dense
+                  @click=${() => this._selectQuickCardType(index, cardType)}
+                  style="margin: 2px;"
+                >
+                  ${cardType}
+                </mwc-button>
+              `)}
+            </div>
+          </div>
+
+          <!-- Fallback button -->
+          <div style="margin-top: 16px; text-align: center;">
+            <mwc-button outlined @click=${() => this._fallbackToYaml(index)}>
+              Use YAML Editor Instead
+            </mwc-button>
+          </div>
+        </div>
+      `;
+    } catch (error) {
+      console.error("Error rendering card picker:", error);
+      return this._renderYamlFallback(index, error.message);
+    }
+  }
+
+  // Render fallback YAML interface
+  _renderYamlFallback(index, errorMessage) {
+    return html`
+      <div style="padding: 16px; text-align: center; color: var(--error-color);">
+        <ha-icon icon="mdi:alert" style="margin-bottom: 8px;"></ha-icon>
+        <div>Card picker unavailable</div>
+        <div style="margin: 8px 0; font-size: 12px;">${errorMessage}</div>
+        <mwc-button raised @click=${() => this._fallbackToYaml(index)}>
+          Use YAML Editor
+        </mwc-button>
+      </div>
+    `;
+  }
+
+  // Safely render card editor with error handling
+  _renderCardEditor(index, cardConfig) {
+    try {
+      return html`
+        <div id="card-editor-container-${index}" style="position: relative;">
+          <hui-card-element-editor
+            .hass=${this.hass}
+            .lovelace=${this._getLovelaceConfig()}
+            .value=${cardConfig}
+            @config-changed=${e => this._handleCardConfigChangedInDialog(index, e)}
+            @error=${e => this._handleCardEditorError(e)}
+          ></hui-card-element-editor>
+        </div>
+      `;
+    } catch (error) {
+      console.error("Error rendering card editor:", error);
+      return html`
+        <div style="padding: 16px; text-align: center; color: var(--error-color);">
+          <ha-icon icon="mdi:alert" style="margin-bottom: 8px;"></ha-icon>
+          <div>Error loading card editor</div>
+          <mwc-button outlined @click=${() => this._fallbackToYaml(index)}>
+            Edit as YAML Instead
+          </mwc-button>
+        </div>
+      `;
+    }
+  }
+
+  // Handle card picker errors
+  _handleCardPickerError(error) {
+    console.error("Card picker error:", error);
+  }
+
+  // Handle card editor errors
+  _handleCardEditorError(error) {
+    console.error("Card editor error:", error);
+  }
+
+  // Quick card type selection (alternative to picker)
+  _selectQuickCardType(index, cardType) {
+    // Create a basic config for the selected card type
+    const config = { type: cardType };
+
+    // Add some basic properties based on card type
+    switch (cardType) {
+      case "entities":
+        config.entities = [];
+        break;
+      case "entity":
+        config.entity = "";
+        break;
+      case "button":
+        config.tap_action = { action: "more-info" };
+        break;
+      case "picture":
+        config.image = "";
+        break;
+      case "conditional":
+        config.conditions = [];
+        config.card = { type: "entity", entity: "" };
+        break;
+      case "history-graph":
+        config.entities = [];
+        break;
+      case "statistics-graph":
+        config.entities = [];
+        config.stat_types = ["mean"];
+        break;
+      case "sensor":
+        config.entity = "";
+        break;
+      case "gauge":
+        config.entity = "";
+        break;
+      case "markdown":
+        config.content = "## Card Content\nEdit this card to add your content.";
+        break;
+    }
+
+    // Apply the config
+    const ents = [...this._config.entities];
+    ents[index] = { ...ents[index], type: "custom_card", card: config };
+    this._push("entities", ents);
+    this.requestUpdate();
+
+    // Stay in editing mode to allow further configuration
+    // User can use Save & Back when done
+  }
+
+  // Enter card editing mode
+  _enterCardEditingMode(index) {
+    this._cardEditingMode = true;
+    this._cardEditingIndex = index;
+    this.requestUpdate();
+  }
+
+  // Exit card editing mode
+  _exitCardEditingMode() {
+    this._cardEditingMode = false;
+    this._cardEditingIndex = null;
+    this.requestUpdate();
+  }
+
+  // Save card and exit editing mode
+  _saveCardAndExit() {
+    this._exitCardEditingMode();
+  }
+
+  // Render integrated card editor
+  _renderIntegratedCardEditor() {
+    const index = this._cardEditingIndex;
+    const entity = this._config.entities[index];
+    const hasCard = entity && entity.card;
+
+    return html`
+      <div style="padding: 20px;">
+        <!-- Card Editor Content -->
+        <div style="margin-bottom: 20px;">
+          ${!hasCard ? html`
+            <!-- Card Type Selection -->
+            <div style="margin-bottom: 20px;">
+              <h3 style="margin-bottom: 12px;">Choose Card Type:</h3>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
+                ${["entities", "entity", "button", "picture", "conditional", "history-graph", "statistics-graph", "sensor", "gauge", "markdown", "glance", "thermostat"].map(cardType => html`
+                  <mwc-button
+                    raised
+                    @click=${() => this._selectQuickCardType(index, cardType)}
+                    style="padding: 12px 8px; text-align: center;"
+                  >
+                    ${cardType}
+                  </mwc-button>
+                `)}
+              </div>
+            </div>
+
+            <!-- Or try hui-card-picker -->
+            <div style="margin-top: 20px; padding: 16px; border: 1px solid var(--divider-color); border-radius: 4px;">
+              <h4 style="margin: 0 0 12px 0;">Or use Home Assistant Card Picker:</h4>
+              ${this._renderCardPicker(index)}
+            </div>
+          ` : html`
+            <!-- Edit Existing Card -->
+            <div style="margin-bottom: 16px;">
+              <h3 style="margin-bottom: 12px;">Edit Card Configuration:</h3>
+              ${this._renderCardEditor(index, entity.card)}
+            </div>
+
+            <!-- YAML Editor Option -->
+            <div style="margin-top: 20px;">
+              <div style="display: flex; gap: 8px;flex-direction:row">
+                <mwc-button outlined @click=${() => this._showCardYaml(index)}>
+                  Edit as YAML
+                </mwc-button>
+                <mwc-button outlined @click=${() => this._removeCard(index)} style="margin-left: 8px; color: var(--error-color);">
+                  Remove Card
+                </mwc-button>
+                <mwc-button outlined @click=${this._exitCardEditingMode}>
+                  Cancel
+                </mwc-button>
+                <mwc-button raised @click=${this._saveCardAndExit}>
+                  Save
+                </mwc-button>
+              </div>
+            </div>
+          `}
+        </div>
+
+        <!-- YAML Editor if active -->
+        ${this._showYamlEditor[index] ? html`
+          <div style="margin-top: 20px; padding: 16px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color);">
+            <h4 style="margin: 0 0 12px 0;">YAML Editor:</h4>
+            <ha-code-editor
+              .hass=${this.hass}
+              .value=${this._pendingYaml[index] || (entity.card ? window.jsyaml?.dump?.(entity.card, { indent: 2 }) || '' : 'type: entity\nentity: \n')}
+              .readOnly=${false}
+              @value-changed=${e => {
+                if (!this._pendingYaml) this._pendingYaml = {};
+                this._pendingYaml[index] = e.detail.value;
+              }}
+              style="height: 300px; border: 1px solid var(--divider-color);"
+              dir="ltr"
+            ></ha-code-editor>
+            <div style="margin-top: 12px;">
+              <mwc-button raised @click=${() => this._applyYaml(index)}>
+                Apply YAML
+              </mwc-button>
+              <mwc-button outlined @click=${() => this._hideYamlEditor(index)} style="margin-left: 8px;">
+                Hide YAML Editor
+              </mwc-button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // Fallback to YAML editor when picker/editor fails
+  _fallbackToYaml(index) {
+    this._closeCardDialog();
+    this._showCardYaml(index);
   }
   render() {
     if (!this.hass) return html``;
+
+    // If in card editing mode, show the integrated editor
+    if (this._cardEditingMode) {
+      return this._renderIntegratedCardEditor();
+    }
 
     const typeOpts = [
       "entity", "sensor", "person", "weather", "light", "switch", "fan", "cover",
@@ -481,115 +1080,61 @@ class HaDashboardSidebarEditor extends LitElement {
                   </div>`
               : html`
                   <div class="column" style="font-size:10px;gap: 12px;">
-                    <div class="yaml-entry">
-                      <div class="field-label">Paste your card YAML here</div>
-                      <ha-yaml-editor
-                        .hass=${this.hass}
-                        .value=${typeof this._pendingYaml[i] === "string"
-                          ? this._pendingYaml[i]
-                          : window.jsyaml?.dump?.(this._pendingYaml[i]) || ""}
-                        @value-changed=${e => {
-                          if (typeof e.detail.value === "object") {
-                            this._pendingYaml[i] = window.jsyaml?.dump?.(e.detail.value) || "";
-                          } else {
+                    <div class="card-configuration-section">
+                      <div class="field-label">Card Configuration</div>
+                      ${!ent.card ? html`
+                        <div style="margin-top: 8px; padding: 12px; background: var(--secondary-background-color); border-radius: 6px; text-align: center;">
+                          <div style="margin-bottom: 12px; color: var(--secondary-text-color);">No card configured</div>
+                          <mwc-button raised @click=${() => this._openCardPicker(i)}>
+                            ➕ Add Card
+                          </mwc-button>
+                        </div>
+                      ` : html`
+                        <div style="margin-top: 8px; padding: 12px; background: var(--card-background-color); border-radius: 6px;">
+                          <div style="margin-bottom: 12px; font-weight: 500;">Card Type: ${ent.card.type || 'Unknown'}</div>
+                          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <mwc-button outlined dense @click=${() => this._editCard(i)}>
+                              ✏️ Edit Card
+                            </mwc-button>
+                            <mwc-button outlined dense @click=${() => this._showCardYaml(i)}>
+                              📝 View YAML
+                            </mwc-button>
+                            <mwc-button outlined dense @click=${() => this._removeCard(i)}>
+                              🗑️ Remove
+                            </mwc-button>
+                            <mwc-button outlined dense @click=${() => this._openCardPicker(i)}>
+                              🔄 Replace
+                            </mwc-button>
+                          </div>
+                        </div>
+                      `}
+                    </div>
+
+                    ${this._showYamlEditor && this._showYamlEditor[i] ? html`
+                      <div class="yaml-entry">
+                        <div class="field-label">Card YAML (Advanced)</div>
+                        <ha-code-editor
+                          .hass=${this.hass}
+                          .value=${this._pendingYaml[i] || (ent.card ? window.jsyaml?.dump?.(ent.card, { indent: 2 }) || "" : "type: entity\nentity: \n")}
+                          .readOnly=${false}
+                          @value-changed=${e => {
+                            if (!this._pendingYaml) this._pendingYaml = {};
                             this._pendingYaml[i] = e.detail.value;
-                          }
-                        }}
-                        style="height: 250px; margin-top: 8px;"
-                      ></ha-yaml-editor>
-                      <mwc-button
-                        outlined dense
-                        @click=${async () => {
-                          try {
-                            const yamlEditor = this.renderRoot.querySelectorAll('ha-yaml-editor')[i];
-                            let yamlString = yamlEditor ? yamlEditor.value : this._pendingYaml[i];
-                            if (typeof yamlString !== "string") {
-                              yamlString = window.jsyaml?.dump?.(yamlString) || "";
-                            }
-                            const entBefore = this._config.entities[i];
-                            let oldYaml = entBefore?.card ? window.jsyaml?.dump?.(entBefore.card) : "(nessun card presente)";
-                            let parsed = window.jsyaml?.load(yamlString);
-                            if (Array.isArray(parsed)) {
-                              if (parsed.length === 1) {
-                                parsed = parsed[0];
-                              } else {
-                                alert("Non puoi incollare più di una card alla volta.");
-                                return;
-                              }
-                            }
-                            if (!parsed || typeof parsed !== "object") throw new Error("YAML non oggetto!");
+                          }}
+                          style="height: 250px; margin-top: 8px; border: 1px solid var(--divider-color);"
+                          dir="ltr"
+                        ></ha-code-editor>
+                        <div style="margin-top: 8px; display: flex; gap: 8px;">
+                          <mwc-button raised dense @click=${() => this._applyYaml(i)}>
+                            Apply YAML
+                          </mwc-button>
+                          <mwc-button outlined dense @click=${() => this._hideYamlEditor(i)}>
+                            ✕ Close YAML
+                          </mwc-button>
+                        </div>
+                      </div>
+                    ` : ""}
 
-                            // 4. Cancella vecchio card (reference nuova)
-                            let ents = this._config.entities.map((ent, idx) => {
-                              if (idx === i) {
-                                let newEnt = { ...ent };
-                                delete newEnt.card;
-                                return newEnt;
-                              }
-                              return ent;
-                            });
-                            this._push("entities", ents);
-                            // 5. Attendi 1 secondo
-                            await new Promise(res => setTimeout(res, 1000));
-
-                            // 6. Leggi lo stato attuale della card dopo cancellazione
-                            const entMid = this._config.entities[i];
-                            let midYaml = entMid?.card ? window.jsyaml?.dump?.(entMid.card) : "(nessun card presente)";
-
-                            // 7. Inserisci il nuovo YAML
-                            ents = this._config.entities.map((ent, idx) => {
-                              if (idx === i) {
-                                let newEnt = { ...ent, card: parsed };
-                                return newEnt;
-                              }
-                              return ent;
-                            });
-                            this._push("entities", ents);
-                            // 8. Conferma salvataggio
-                            this._pendingYaml[i] = window.jsyaml?.dump?.(parsed) || "";
-                            alert("YAML applied!");
-                          } catch (e) {
-                            alert("YAML non valido: " + e);
-                          }
-                        }}
-                        style="margin-top:8px;width:max-content;">
-                        APPLY
-                      </mwc-button>
-                      <mwc-button
-                        outlined dense
-                        @click=${() => {
-                          const yamlCurrent = ent.card ? window.jsyaml?.dump?.(ent.card) : "";
-                          this._pendingYaml[i] = yamlCurrent;
-                          setTimeout(() => {
-                            const editors = this.renderRoot.querySelectorAll('ha-yaml-editor');
-                            const yamlEditor = editors[i];
-                            if (yamlEditor) {
-                              yamlEditor.value = yamlCurrent;
-                              if (yamlEditor.shadowRoot) {
-                                const codeEditor = yamlEditor.shadowRoot.querySelector('ha-code-editor');
-                                if (codeEditor) {
-                                  codeEditor.value = yamlCurrent;
-                                  codeEditor.dispatchEvent(new Event('input', { bubbles: true }));
-                                  codeEditor.dispatchEvent(new Event('change', { bubbles: true }));
-                                  if (codeEditor.editor && typeof codeEditor.editor.setValue === "function") {
-                                    codeEditor.editor.setValue(yamlCurrent);
-                                  }
-                                } else {
-                                }
-                              } else {
-                              }
-
-                              setTimeout(() => {
-                              }, 100);
-                            } else {
-                            }
-                          }, 0);
-
-                          this.requestUpdate();
-                        }}
-                        style="margin-top:8px;width:max-content;">
-                        🔁 Sync YAML
-                      </mwc-button>
                     </div>
                     <div style="flex: 2;min-width: 20px;max-width:150px;">
                       <div class="field-label">Collapsed</div>
@@ -647,6 +1192,8 @@ class HaDashboardSidebarEditor extends LitElement {
       `;
       })}
       <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
+
+      ${this._renderCardDialog()}
     `;
   }
 
