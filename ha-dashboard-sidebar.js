@@ -13,18 +13,15 @@ function bindActionHandler(el, { hasHold = false } = {}) {
       el.removeEventListener("touchend", el.__endHandler);
     }
   }
-
   el.__boundActionHandler = true;
   el._lastActionType = null;
   el._actionHandlerHeld = false;
   let timer;
-
   const start = (ev) => {
     // Prevent default behavior for touchstart to avoid issues on some browsers
     if (ev.type === "touchstart") {
       ev.preventDefault();
     }
-
     el._actionHandlerHeld = false;
     el._lastActionType = null;
 
