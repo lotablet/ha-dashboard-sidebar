@@ -18,8 +18,8 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el._actionHandlerHeld = false;
   let timer;
   const start = (ev) => {
-    // Prevent default behavior for touchstart to avoid issues on some browsers
-    if (ev.type === "touchstart") {
+    // Only prevent default for touchstart if we need to handle hold actions
+    if (ev.type === "touchstart" && hasHold) {
       ev.preventDefault();
     }
     el._actionHandlerHeld = false;
@@ -48,7 +48,7 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el.__endHandler = end;
 
   el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: false });
+  el.addEventListener("touchstart", start, { passive: !hasHold });
   el.addEventListener("mouseup", end);
   el.addEventListener("touchend", end);
 
