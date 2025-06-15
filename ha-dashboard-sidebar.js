@@ -1656,7 +1656,6 @@ class HaDashboardSidebar extends LitElement {
             background: transparent;
             border-radius: 24px;
             z-index: 9000;
-            padding: 10px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -1666,6 +1665,8 @@ class HaDashboardSidebar extends LitElement {
             left: 50% !important;
             transform: translate(-50%, -50%) !important;
             overflow: visible !important;
+            min-width: 50vw;
+            max-width: 100vw;
         }
         .mini-popup::after {
         	/* content: ""; */
