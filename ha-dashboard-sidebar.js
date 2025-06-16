@@ -115,7 +115,7 @@ class HaDashboardSidebarEditor extends LitElement {
     if (changedProps.has("hass") && changedProps.size === 1) {
       return false; // Blocca re-render per solo cambio hass nell'EDITOR
     }
-    
+
     return super.shouldUpdate(changedProps);
   }
 
@@ -230,13 +230,13 @@ class HaDashboardSidebarEditor extends LitElement {
     }
 
     this._config = updated;
-    
+
     // OTTIMIZZAZIONE LEGGERA: Evita solo re-render multipli immediati
     if (!this._updatePending) {
       this._updatePending = true;
       requestAnimationFrame(() => {
         this._updatePending = false;
-        this.requestUpdate();
+    this.requestUpdate();
       });
     }
 
@@ -1367,8 +1367,6 @@ class HaDashboardSidebar extends LitElement {
       _miniEntity: { type: Object },
       _miniPos: { type: Object },
       _expandContent: { type: Boolean },
-      _optimisticTemp: { type: Number },
-      _optimisticUntil: { type: Number },
     };
   }
 
@@ -1385,6 +1383,8 @@ class HaDashboardSidebar extends LitElement {
     this._localPosition = 0;
     this._localFanSpeed = 0;
     this._pendingTemp = undefined;
+
+
     this._weatherIcons = {
       'clear-night': {
         icon: '🌙',
@@ -1452,171 +1452,57 @@ class HaDashboardSidebar extends LitElement {
     this._expandContent = !this._expandContent;
   }
 
-  shouldUpdate(changedProps) {
+
+
+  shouldUpdate(changedProperties) {
     // Permetti il primo render quando hass viene impostato per la prima volta
-    if (changedProps.has("hass") && !changedProps.get("hass")) {
+    if (changedProperties.has("hass") && !changedProperties.get("hass")) {
       return true; // Primo render con hass
     }
-    
-    // CONTROLLO CUSTOM CARD: Se ci sono custom card, permetti sempre i re-render di hass
-    const hasCustomCards = this.config?.entities?.some(entity => entity.type === 'custom_card');
-    if (hasCustomCards && changedProps.has("hass")) {
-      return true; // Le custom card hanno bisogno degli aggiornamenti hass
+
+    // SOLUZIONE MIRATA: Solo custom card causano problemi
+    if (changedProperties.has('hass') && changedProperties.size === 1) {
+      // Aggiorna SOLO le custom card senza re-render dell'intera sidebar
+      this._updateExistingCustomCards(this.hass);
+
+      // NON fare re-render dell'intera sidebar per aggiornamenti hass
+      // I sensori e altre entità si aggiornano automaticamente tramite i loro stati
+      return false;
     }
-    
-    // Per entità normali, usa aggiornamento chirurgico
-    if (changedProps.has("hass") && changedProps.size === 1) {
-      // Aggiorna chirurgicamente solo le parti cambiate invece di re-renderizzare tutto
-      this._updateChangedEntities(changedProps.get("hass"));
-      return false; // BLOCCA il re-render completo solo per entità normali
-    }
-    
-    // Permetti re-render per cambiamenti di configurazione o stato UI
-    return changedProps.has("config") || 
-           changedProps.has("_collapsed") || 
-           changedProps.has("_expandContent") ||
-           changedProps.has("_miniEntity");
+
+    // Permetti re-render SOLO per cambiamenti strutturali
+    return changedProperties.has("config") ||
+           changedProperties.has("_collapsed") ||
+           changedProperties.has("_expandContent") ||
+           changedProperties.has("_miniEntity") ||
+           changedProperties.has("_time");
   }
 
-  _updateChangedEntities(oldHass) {
-    if (!oldHass || !this.hass || !this.config?.entities) return;
-    
-    this.config.entities.forEach((entity, index) => {
-      const oldState = oldHass.states[entity.entity];
-      const newState = this.hass.states[entity.entity];
-      
-      // Solo se lo stato è effettivamente cambiato
-      if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
-        this._updateSingleEntity(entity, index, newState);
+
+
+  // Aggiornamento semplice delle custom card
+  _updateExistingCustomCards(newHass) {
+    if (!this._createdCards || this._createdCards.size === 0) return;
+
+    // Aggiorna tutte le custom card esistenti con il nuovo hass
+    this._createdCards.forEach((card) => {
+      if (card && card.hass !== newHass) {
+        card.hass = newHass;
       }
     });
   }
 
-  _updateSingleEntity(entity, index, state) {
-    if (!state) return;
-    
-    // Trova l'elemento DOM specifico per questa entità
-    const entityElement = this.shadowRoot?.querySelector(`[data-entity-index="${index}"]`);
-    if (!entityElement) return;
-    
-    const domain = entity.entity.split(".")[0];
-    
-    switch (domain) {
-      case "climate":
-        this._updateClimateElement(entityElement, entity, state);
-        break;
-      case "light":
-        this._updateLightElement(entityElement, entity, state);
-        break;
-      case "sensor":
-        this._updateSensorElement(entityElement, entity, state);
-        break;
-      case "switch":
-        this._updateSwitchElement(entityElement, entity, state);
-        break;
-      case "cover":
-        this._updateCoverElement(entityElement, entity, state);
-        break;
-      case "media_player":
-        this._updateMediaPlayerElement(entityElement, entity, state);
-        break;
-      case "fan":
-        this._updateFanElement(entityElement, entity, state);
-        break;
-      default:
-        // Per entità non specifiche, aggiorna solo il valore
-        const valueElement = entityElement.querySelector('.value');
-        if (valueElement) {
-          valueElement.textContent = state.state;
-        }
-    }
-  }
 
-  _updateClimateElement(element, entity, state) {
-    // Aggiorna solo temperatura corrente
-    const currentTempElement = element.querySelector('.climate-current');
-    if (currentTempElement) {
-      const temp = state.attributes.current_temperature;
-      const unit = state.attributes.temperature_unit;
-      currentTempElement.textContent = `${temp}°${unit}`;
-    }
-    
-    // Aggiorna slider solo se non è in uso (non ottimistico)
-    if (this._optimisticTemp === undefined || Date.now() > this._optimisticUntil) {
-      const slider = element.querySelector('.climate-temp-slider');
-      if (slider) {
-        slider.value = state.attributes.temperature || 20;
-      }
-      
-      const targetLabel = element.querySelector('.climate-target-label');
-      if (targetLabel) {
-        const temp = state.attributes.temperature || 20;
-        const unit = state.attributes.temperature_unit;
-        targetLabel.textContent = `Target: ${temp}°${unit}`;
-        targetLabel.style.color = '';
-      }
-    }
-  }
 
-  _updateSensorElement(element, entity, state) {
-    const valueElement = element.querySelector('.value');
-    if (valueElement) {
-      const unit = state.attributes.unit_of_measurement || '';
-      valueElement.textContent = `${state.state}${unit}`;
-    }
-  }
 
-  _updateSwitchElement(element, entity, state) {
-    const toggle = element.querySelector('input[type="checkbox"]');
-    if (toggle) {
-      toggle.checked = state.state === 'on';
-    }
-  }
 
-  _updateLightElement(element, entity, state) {
-    const toggle = element.querySelector('input[type="checkbox"]');
-    if (toggle) {
-      toggle.checked = state.state === 'on';
-    }
-    
-    // Aggiorna slider brightness solo se la luce è accesa
-    if (state.state === 'on' && 'brightness' in state.attributes) {
-      const brightnessSlider = element.querySelector('.slider.brightness');
-      if (brightnessSlider) {
-        this._localBrightness = Math.round((state.attributes.brightness / 255) * 100);
-        brightnessSlider.value = this._localBrightness;
-      }
-    }
-  }
 
-  _updateCoverElement(element, entity, state) {
-    const positionSlider = element.querySelector('.slider.position');
-    if (positionSlider) {
-      this._localPosition = state.attributes.current_position || 0;
-      positionSlider.value = this._localPosition;
-    }
-  }
 
-  _updateMediaPlayerElement(element, entity, state) {
-    const volumeSlider = element.querySelector('.slider.volume');
-    if (volumeSlider) {
-      this._localVolume = (state.attributes.volume_level || 0) * 100;
-      volumeSlider.value = this._localVolume;
-    }
-  }
 
-  _updateFanElement(element, entity, state) {
-    const speedSlider = element.querySelector('.slider.fan-speed');
-    if (speedSlider) {
-      this._localFanSpeed = state.attributes.percentage || 0;
-      speedSlider.value = this._localFanSpeed;
-    }
-  }
 
-  updated(changedProps) {
-    super.updated(changedProps);
-    // Ora questo metodo viene chiamato solo per cambiamenti UI essenziali
-  }
+
+
+
 
   static async getStubConfig(hass) {
     return {
@@ -1916,7 +1802,7 @@ class HaDashboardSidebar extends LitElement {
         }
         /* collapsed width */
         .dashboard.collapsed.vertical{width:90px!important}
-        
+
         /* Animazioni scale per sidebar */
         .dashboard.vertical:not(.collapsed){
           animation: expandScaleVertical 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
@@ -2822,7 +2708,7 @@ class HaDashboardSidebar extends LitElement {
             opacity: 1;
           }
         }
-        
+
         @keyframes collapseScaleVertical {
           0% {
             transform: scaleX(1) scaleY(1);
@@ -2837,7 +2723,7 @@ class HaDashboardSidebar extends LitElement {
             opacity: 0.8;
           }
         }
-        
+
         @keyframes expandScaleHorizontal {
           0% {
             transform: scaleY(0.1);
@@ -2852,7 +2738,7 @@ class HaDashboardSidebar extends LitElement {
             opacity: 1;
           }
         }
-        
+
         @keyframes collapseScaleHorizontal {
           0% {
             transform: scaleY(1);
@@ -2874,7 +2760,18 @@ class HaDashboardSidebar extends LitElement {
 
     const id = entity.card.entity || entity.card.unique_id || JSON.stringify(entity.card);
 
-    if (this._createdCards.has(id)) return;
+    // Se la card esiste già, aggiorna solo hass invece di ricrearla
+    if (this._createdCards.has(id)) {
+      const existingCard = this._createdCards.get(id);
+      if (existingCard) {
+        existingCard.hass = this.hass;
+        // Aggiorna la configurazione se è cambiata
+        if (typeof existingCard.setConfig === "function") {
+          existingCard.setConfig(entity.card);
+        }
+      }
+      return;
+    }
 
     if (!window.loadCardHelpers) {
       console.error('[sidebar] Card Helpers not available');
@@ -2889,6 +2786,13 @@ class HaDashboardSidebar extends LitElement {
       }
       card.hass = this.hass;
       this._createdCards.set(id, card);
+
+      // Aggiunge stabilità alla card per evitare crash
+      if (card.style) {
+        card.style.transition = 'none';
+        card.style.willChange = 'auto';
+      }
+
       this.requestUpdate();
     } catch (err) {
       console.error('[sidebar] Errore nella creazione della custom card:', err);
@@ -2981,7 +2885,11 @@ class HaDashboardSidebar extends LitElement {
 
   _updateTime() {
     this._timeInterval = setInterval(() => {
-      this._time = this._getCurrentTime();
+      const newTime = this._getCurrentTime();
+      if (newTime !== this._time) {
+        this._time = newTime;
+        // Don't call requestUpdate here - let shouldUpdate handle it
+      }
     }, 1000);
   }
 
@@ -3150,6 +3058,8 @@ class HaDashboardSidebar extends LitElement {
   _toggleCollapse() {
     this._collapsed = !this._collapsed;
   }
+
+
 
   _handlePersonClick(entity) {
     this._selectedEntity = entity;
@@ -3730,7 +3640,7 @@ class HaDashboardSidebar extends LitElement {
               tabindex="0"
               @action=${e => this._handleAction(e, config)}
               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-              
+
             >
               ${this._renderIcon(config, "switch")}
             </div>`
@@ -3800,7 +3710,7 @@ class HaDashboardSidebar extends LitElement {
             }
           }}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          
+
         >
           <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
         </button>
@@ -3827,7 +3737,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          
+
         >
           ${this._renderIcon(config, "fan")}
         </div>
@@ -3915,7 +3825,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          
+
         >
           ${this._renderIcon(config, "media_player")}
         </div>
