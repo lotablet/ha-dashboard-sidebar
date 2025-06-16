@@ -20,11 +20,6 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   let timer;
 
   const start = (ev) => {
-    // Prevent default behavior for touchstart to avoid issues on some browsers
-    if (ev.type === "touchstart") {
-      ev.preventDefault();
-    }
-
     el._actionHandlerHeld = false;
     el._lastActionType = null;
 
@@ -51,7 +46,7 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el.__endHandler = end;
 
   el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: false });
+  el.addEventListener("touchstart", start, { passive: true });
   el.addEventListener("mouseup", end);
   el.addEventListener("touchend", end);
 
@@ -77,7 +72,8 @@ class HaDashboardSidebarEditor extends LitElement {
     hass: { type: Object },
     _config: { type: Object },
     _pickerOpenIndex: { state: true },
-    _zIndexActive: { state: true }
+    _zIndexActive: { state: true },
+    _updatePending: { state: true }
   };
 
   constructor() {
@@ -93,8 +89,9 @@ class HaDashboardSidebarEditor extends LitElement {
 
     };
     this._pickerOpenIndex = null;
-    this._iconHover = {};
+
     this._zIndexActive = false;
+    this._updatePending = false;
     this._widthRaw = "";
     this._pendingYaml = {};
     this._heightRaw = "";
@@ -110,6 +107,16 @@ class HaDashboardSidebarEditor extends LitElement {
         .then(mod => window.jsyaml = mod)
         .catch(() => console.warn("js-yaml non caricato"));
     }
+  }
+
+  shouldUpdate(changedProps) {
+    // OTTIMIZZAZIONE MIRATA: Solo per l'editor, non per la sidebar principale
+    // L'editor non ha bisogno di re-renderizzare quando cambia solo hass
+    if (changedProps.has("hass") && changedProps.size === 1) {
+      return false; // Blocca re-render per solo cambio hass nell'EDITOR
+    }
+    
+    return super.shouldUpdate(changedProps);
   }
 
   // Localization function
@@ -223,7 +230,15 @@ class HaDashboardSidebarEditor extends LitElement {
     }
 
     this._config = updated;
-    this.requestUpdate();
+    
+    // OTTIMIZZAZIONE LEGGERA: Evita solo re-render multipli immediati
+    if (!this._updatePending) {
+      this._updatePending = true;
+      requestAnimationFrame(() => {
+        this._updatePending = false;
+        this.requestUpdate();
+      });
+    }
 
     const cfg = { type: "custom:ha-dashboard-sidebar", ...this._config };
     if (cfg.mode === "horizontal") {
@@ -936,16 +951,6 @@ class HaDashboardSidebarEditor extends LitElement {
       </div>
       <div class="big-divider"></div>
       ${this._config.entities.map((ent, i) => {
-        if (ent.type === "custom_card") {
-          // Sincronizzazione automatica editor <-- AGGIUNGI QUESTO
-          const yamlCurrent = ent.card ? window.jsyaml?.dump?.(ent.card) : "";
-          if (
-            typeof this._pendingYaml[i] !== "string" ||
-            this._pendingYaml[i].trim() !== yamlCurrent.trim()
-          ) {
-            this._pendingYaml[i] = yamlCurrent;
-          }
-        }
 
         return html`
           <div class="divider" style="display: flex; align-items: center; padding: 0;">
@@ -959,16 +964,14 @@ class HaDashboardSidebarEditor extends LitElement {
                 ?disabled=${i === 0}
                 title="Sposta su"
                 @click=${() => this._moveUp(i)}
-                @mouseenter=${() => { this._iconHover[`up-${i}`] = true; this.requestUpdate(); }}
-                @mouseleave=${() => { this._iconHover[`up-${i}`] = false; this.requestUpdate(); }}
                 style=${`
                   --mdc-icon-size: 22px;
                   cursor: ${i === 0 ? 'not-allowed' : 'pointer'};
-                  color: ${this._iconHover[`up-${i}`] && i !== 0 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
+                  color: var(--primary-text-color, #fff);
                   opacity: ${i === 0 ? 0.3 : 1};
                   transition: color 0.15s, filter 0.15s;
-                  filter: ${this._iconHover[`up-${i}`] && i !== 0 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
                 `}
+                class="editor-hover-icon ${i === 0 ? 'disabled' : ''}"
               ></ha-icon>
             </div>
             <div class="icon-circle">
@@ -978,16 +981,14 @@ class HaDashboardSidebarEditor extends LitElement {
                 ?disabled=${i === this._config.entities.length - 1}
                 title="Sposta giù"
                 @click=${() => this._moveDown(i)}
-                @mouseenter=${() => { this._iconHover[`down-${i}`] = true; this.requestUpdate(); }}
-                @mouseleave=${() => { this._iconHover[`down-${i}`] = false; this.requestUpdate(); }}
                 style=${`
                   --mdc-icon-size: 22px;
                   cursor: ${i === this._config.entities.length - 1 ? 'not-allowed' : 'pointer'};
-                  color: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
+                  color: var(--primary-text-color, #fff);
                   opacity: ${i === this._config.entities.length - 1 ? 0.3 : 1};
                   transition: color 0.15s, filter 0.15s;
-                  filter: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
                 `}
+                class="editor-hover-icon ${i === this._config.entities.length - 1 ? 'disabled' : ''}"
               ></ha-icon>
             </div>
             <div style="width: 10px;"></div>
@@ -996,15 +997,13 @@ class HaDashboardSidebarEditor extends LitElement {
               class="delete divider-delete"
               @click=${() => this._del(i)}
               title="Remove"
-              @mouseenter=${() => { this._iconHover[`del-${i}`] = true; this.requestUpdate(); }}
-              @mouseleave=${() => { this._iconHover[`del-${i}`] = false; this.requestUpdate(); }}
               style=${`
                 --mdc-icon-size: 28px;
                 cursor:pointer;
-                color: ${this._iconHover[`del-${i}`] ? 'red' : '#e35'};
+                color: #e35;
                 transition: color 0.15s, filter 0.15s;
-                filter: ${this._iconHover[`del-${i}`] ? 'drop-shadow(0 0 5px var(--accent-color, #ff9800))' : 'none'};
               `}
+              class="editor-delete-icon"
             />
           </div>
           <div class="row">
@@ -1331,6 +1330,20 @@ class HaDashboardSidebarEditor extends LitElement {
       --mdc-icon-size: 20px;
       color: var(--primary-text-color); /* corretto: era '---' */
     }
+
+    /* Stili hover per editor senza JavaScript - PERFORMANCE FIX */
+    .editor-hover-icon:not(.disabled):hover {
+      color: var(--accent-color, #ff9800) !important;
+      filter: drop-shadow(0 0 3px var(--accent-color, #ff9800)) !important;
+    }
+    .editor-delete-icon:hover {
+      color: red !important;
+      filter: drop-shadow(0 0 5px var(--accent-color, #ff9800)) !important;
+    }
+    .editor-hover-icon.disabled:hover {
+      color: var(--primary-text-color, #fff) !important;
+      filter: none !important;
+    }
   `;
 }
 customElements.define("ha-dashboard-sidebar-editor", HaDashboardSidebarEditor);
@@ -1353,6 +1366,9 @@ class HaDashboardSidebar extends LitElement {
       _optimisticUntil: { type: Number, state: true },
       _miniEntity: { type: Object },
       _miniPos: { type: Object },
+      _expandContent: { type: Boolean },
+      _optimisticTemp: { type: Number },
+      _optimisticUntil: { type: Number },
     };
   }
 
@@ -1368,10 +1384,7 @@ class HaDashboardSidebar extends LitElement {
     this._localVolume = 0;
     this._localPosition = 0;
     this._localFanSpeed = 0;
-    this._expandContent = false;
     this._pendingTemp = undefined;
-    this._optimisticTemp = undefined;
-    this._optimisticUntil = 0;
     this._weatherIcons = {
       'clear-night': {
         icon: '🌙',
@@ -1437,59 +1450,172 @@ class HaDashboardSidebar extends LitElement {
   }
   _toggleExpandContent() {
     this._expandContent = !this._expandContent;
-    this.requestUpdate();
   }
-  updated() {
-    const entityId = this._config?.entity || this.config?.entity;
-    if (!entityId || !this.hass) return;
 
-    const state = this.hass.states[entityId];
+  shouldUpdate(changedProps) {
+    // Permetti il primo render quando hass viene impostato per la prima volta
+    if (changedProps.has("hass") && !changedProps.get("hass")) {
+      return true; // Primo render con hass
+    }
+    
+    // CONTROLLO CUSTOM CARD: Se ci sono custom card, permetti sempre i re-render di hass
+    const hasCustomCards = this.config?.entities?.some(entity => entity.type === 'custom_card');
+    if (hasCustomCards && changedProps.has("hass")) {
+      return true; // Le custom card hanno bisogno degli aggiornamenti hass
+    }
+    
+    // Per entità normali, usa aggiornamento chirurgico
+    if (changedProps.has("hass") && changedProps.size === 1) {
+      // Aggiorna chirurgicamente solo le parti cambiate invece di re-renderizzare tutto
+      this._updateChangedEntities(changedProps.get("hass"));
+      return false; // BLOCCA il re-render completo solo per entità normali
+    }
+    
+    // Permetti re-render per cambiamenti di configurazione o stato UI
+    return changedProps.has("config") || 
+           changedProps.has("_collapsed") || 
+           changedProps.has("_expandContent") ||
+           changedProps.has("_miniEntity");
+  }
+
+  _updateChangedEntities(oldHass) {
+    if (!oldHass || !this.hass || !this.config?.entities) return;
+    
+    this.config.entities.forEach((entity, index) => {
+      const oldState = oldHass.states[entity.entity];
+      const newState = this.hass.states[entity.entity];
+      
+      // Solo se lo stato è effettivamente cambiato
+      if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
+        this._updateSingleEntity(entity, index, newState);
+      }
+    });
+  }
+
+  _updateSingleEntity(entity, index, state) {
     if (!state) return;
-
-    const actualTemp = state.attributes.temperature;
-    if (this._optimisticTemp !== undefined && actualTemp === this._optimisticTemp) {
-      this._optimisticTemp = undefined;
-      this._optimisticUntil = 0;
-      this.requestUpdate();
-    }
-    if (this._optimisticUntil && Date.now() > this._optimisticUntil) {
-      this._optimisticTemp = undefined;
-      this._optimisticUntil = 0;
-      this.requestUpdate();
+    
+    // Trova l'elemento DOM specifico per questa entità
+    const entityElement = this.shadowRoot?.querySelector(`[data-entity-index="${index}"]`);
+    if (!entityElement) return;
+    
+    const domain = entity.entity.split(".")[0];
+    
+    switch (domain) {
+      case "climate":
+        this._updateClimateElement(entityElement, entity, state);
+        break;
+      case "light":
+        this._updateLightElement(entityElement, entity, state);
+        break;
+      case "sensor":
+        this._updateSensorElement(entityElement, entity, state);
+        break;
+      case "switch":
+        this._updateSwitchElement(entityElement, entity, state);
+        break;
+      case "cover":
+        this._updateCoverElement(entityElement, entity, state);
+        break;
+      case "media_player":
+        this._updateMediaPlayerElement(entityElement, entity, state);
+        break;
+      case "fan":
+        this._updateFanElement(entityElement, entity, state);
+        break;
+      default:
+        // Per entità non specifiche, aggiorna solo il valore
+        const valueElement = entityElement.querySelector('.value');
+        if (valueElement) {
+          valueElement.textContent = state.state;
+        }
     }
   }
 
+  _updateClimateElement(element, entity, state) {
+    // Aggiorna solo temperatura corrente
+    const currentTempElement = element.querySelector('.climate-current');
+    if (currentTempElement) {
+      const temp = state.attributes.current_temperature;
+      const unit = state.attributes.temperature_unit;
+      currentTempElement.textContent = `${temp}°${unit}`;
+    }
+    
+    // Aggiorna slider solo se non è in uso (non ottimistico)
+    if (this._optimisticTemp === undefined || Date.now() > this._optimisticUntil) {
+      const slider = element.querySelector('.climate-temp-slider');
+      if (slider) {
+        slider.value = state.attributes.temperature || 20;
+      }
+      
+      const targetLabel = element.querySelector('.climate-target-label');
+      if (targetLabel) {
+        const temp = state.attributes.temperature || 20;
+        const unit = state.attributes.temperature_unit;
+        targetLabel.textContent = `Target: ${temp}°${unit}`;
+        targetLabel.style.color = '';
+      }
+    }
+  }
+
+  _updateSensorElement(element, entity, state) {
+    const valueElement = element.querySelector('.value');
+    if (valueElement) {
+      const unit = state.attributes.unit_of_measurement || '';
+      valueElement.textContent = `${state.state}${unit}`;
+    }
+  }
+
+  _updateSwitchElement(element, entity, state) {
+    const toggle = element.querySelector('input[type="checkbox"]');
+    if (toggle) {
+      toggle.checked = state.state === 'on';
+    }
+  }
+
+  _updateLightElement(element, entity, state) {
+    const toggle = element.querySelector('input[type="checkbox"]');
+    if (toggle) {
+      toggle.checked = state.state === 'on';
+    }
+    
+    // Aggiorna slider brightness solo se la luce è accesa
+    if (state.state === 'on' && 'brightness' in state.attributes) {
+      const brightnessSlider = element.querySelector('.slider.brightness');
+      if (brightnessSlider) {
+        this._localBrightness = Math.round((state.attributes.brightness / 255) * 100);
+        brightnessSlider.value = this._localBrightness;
+      }
+    }
+  }
+
+  _updateCoverElement(element, entity, state) {
+    const positionSlider = element.querySelector('.slider.position');
+    if (positionSlider) {
+      this._localPosition = state.attributes.current_position || 0;
+      positionSlider.value = this._localPosition;
+    }
+  }
+
+  _updateMediaPlayerElement(element, entity, state) {
+    const volumeSlider = element.querySelector('.slider.volume');
+    if (volumeSlider) {
+      this._localVolume = (state.attributes.volume_level || 0) * 100;
+      volumeSlider.value = this._localVolume;
+    }
+  }
+
+  _updateFanElement(element, entity, state) {
+    const speedSlider = element.querySelector('.slider.fan-speed');
+    if (speedSlider) {
+      this._localFanSpeed = state.attributes.percentage || 0;
+      speedSlider.value = this._localFanSpeed;
+    }
+  }
 
   updated(changedProps) {
     super.updated(changedProps);
-    if (changedProps.has("hass")) {
-      this.config.entities.forEach((entity) => {
-        const state = this.hass.states[entity.entity];
-        if (!state) return;
-
-        switch (entity.entity.split(".")[0]) {
-          case "climate":
-            break;
-          case "media_player":
-            this._localVolume = (state.attributes.volume_level || 0) * 100;
-            break;
-          case "cover":
-            this._localPosition = state.attributes.current_position || 0;
-            break;
-          case "fan":
-            this._localFanSpeed = state.attributes.percentage || 0;
-            break;
-          case "light":
-            if ("brightness" in state.attributes) {
-              this._localBrightness = Math.round((state.attributes.brightness / 255) * 100);
-            }
-            if ("color_temp_kelvin" in state.attributes) {
-              this._localKelvin = state.attributes.color_temp_kelvin;
-            }
-            break;
-        }
-      });
-    }
+    // Ora questo metodo viene chiamato solo per cambiamenti UI essenziali
   }
 
   static async getStubConfig(hass) {
@@ -3021,8 +3147,6 @@ class HaDashboardSidebar extends LitElement {
     event.detail = { entityId };
     this.dispatchEvent(event);
   }
-  _expandContent = false;
-
   _toggleCollapse() {
     this._collapsed = !this._collapsed;
   }
@@ -3159,7 +3283,7 @@ class HaDashboardSidebar extends LitElement {
       }
   }
 
-  _renderEntity(entity) {
+  _renderEntity(entity, index = 0) {
       if (!entity) return html``;
 
       /* -------- collapsed:true / false sul singolo entity -------- */
@@ -3239,17 +3363,17 @@ class HaDashboardSidebar extends LitElement {
       const domain = entity.entity.split('.')[0];
 
       switch (domain) {
-          case 'weather':       return this._renderWeather(entity);
-          case 'person':        return this._renderPerson(entity);
-          case 'sensor':        return this._renderSensor(entity);
-          case 'cover':         return this._renderCover(entity);
-          case 'climate':       return this._renderClimate(entity);
-          case 'switch':        return this._renderSwitch(entity);
+          case 'weather':       return this._renderWeather(entity, index);
+          case 'person':        return this._renderPerson(entity, index);
+          case 'sensor':        return this._renderSensor(entity, index);
+          case 'cover':         return this._renderCover(entity, index);
+          case 'climate':       return this._renderClimate(entity, index);
+          case 'switch':        return this._renderSwitch(entity, index);
           case 'script':
-          case 'button':        return this._renderButton(entity);
-          case 'fan':           return this._renderFan(entity);
-          case 'media_player':  return this._renderMediaPlayer(entity);
-          case 'light':         return this._renderLight(entity);
+          case 'button':        return this._renderButton(entity, index);
+          case 'fan':           return this._renderFan(entity, index);
+          case 'media_player':  return this._renderMediaPlayer(entity, index);
+          case 'light':         return this._renderLight(entity, index);
           default:              return html``;
       }
   }
@@ -3338,7 +3462,7 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-  _renderClimate(config) {
+  _renderClimate(config, index = 0) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
 
@@ -3368,7 +3492,7 @@ class HaDashboardSidebar extends LitElement {
 
     if (this._collapsed) {
       return html`
-        <div class="card climate">
+        <div class="card climate" data-entity-index="${index}">
           <div class="collapsed-clickable-box"
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
@@ -3381,7 +3505,7 @@ class HaDashboardSidebar extends LitElement {
     }
 
     return html`
-      <div class="card climate">
+      <div class="card climate" data-entity-index="${index}">
         <div class="climate-layout">
           <div class="climate-controls">
             <div class="climate-title">
@@ -3419,7 +3543,6 @@ class HaDashboardSidebar extends LitElement {
                   const val = +e.target.value;
                   this._optimisticTemp = val;
                   this._optimisticUntil = Date.now() + 8000;
-                  this.requestUpdate();
                 }}
                 @change=${e => {
                   const val = +e.target.value;
@@ -3455,7 +3578,7 @@ class HaDashboardSidebar extends LitElement {
     this._optimisticTemp = newTemp;
     this._optimisticUntil = Date.now() + 8000;
 
-    this.requestUpdate();
+
     this._callService('climate', 'set_temperature', entityId, {
       temperature: newTemp
     });
@@ -4173,7 +4296,7 @@ class HaDashboardSidebar extends LitElement {
         </div>
 
         <div class="content">
-          ${this.config.entities.map(entity => this._renderEntity(entity))}
+          ${this.config.entities.map((entity, index) => this._renderEntity(entity, index))}
         </div>
 
         ${isVertical ? html`
