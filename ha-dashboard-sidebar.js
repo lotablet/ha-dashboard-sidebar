@@ -13,15 +13,18 @@ function bindActionHandler(el, { hasHold = false } = {}) {
       el.removeEventListener("touchend", el.__endHandler);
     }
   }
+
   el.__boundActionHandler = true;
   el._lastActionType = null;
   el._actionHandlerHeld = false;
   let timer;
+
   const start = (ev) => {
-    // Only prevent default for touchstart if we need to handle hold actions
-    if (ev.type === "touchstart" && hasHold) {
+    // Prevent default behavior for touchstart to avoid issues on some browsers
+    if (ev.type === "touchstart") {
       ev.preventDefault();
     }
+
     el._actionHandlerHeld = false;
     el._lastActionType = null;
 
@@ -48,7 +51,7 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el.__endHandler = end;
 
   el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: !hasHold });
+  el.addEventListener("touchstart", start, { passive: false });
   el.addEventListener("mouseup", end);
   el.addEventListener("touchend", end);
 
@@ -1600,16 +1603,27 @@ class HaDashboardSidebar extends LitElement {
 
         .content{
           flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;
-          scrollbar-width:none;-ms-overflow-style:none}
+          scrollbar-width:none;-ms-overflow-style:none;
+          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease
+        }
+        .dashboard.collapsed .content{
+          cursor:pointer;
+        }
+        .dashboard.collapsed .content:hover{
+          background:rgba(255,255,255,0.05);
+          border-radius:12px;
+        }
         .content::-webkit-scrollbar{width:0;height:0}
         .toggle-area{position:absolute;inset:0;cursor:pointer;background:transparent;z-index:1}
 
         .clock{
-          font-size:2.25rem;font-weight:600;margin-bottom:8px;transition:.3s;
+          font-size:2.25rem;font-weight:600;margin-bottom:8px;
+          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1);
           color:var(--primary-text-color,#fff);letter-spacing:-1px;z-index:1}
         .collapsed .clock{font-size:1.5rem;letter-spacing:0}
 
-        .title{font-size:1rem;font-weight:500;opacity:.7;transition:.3s;
+        .title{font-size:1rem;font-weight:500;opacity:.7;
+          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
           color:var(--primary-text-color,#fff);margin:0}
         .collapsed .title{opacity:0;height:0}
 
@@ -1741,19 +1755,49 @@ class HaDashboardSidebar extends LitElement {
           box-shadow:var(--ha-card-box-shadow,0 8px 32px rgba(0,0,0,.25));
           width:auto;max-height:80vh;overflow:hidden;position:relative;backdrop-filter:blur(10px);
           border:1px solid var(--divider-color,rgba(255,255,255,.1));display:flex;flex-direction:column;
-          transition:all .5s ease,height .5s,width .5s
+          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          transform-origin: center;
         }
-        .dashboard.vertical{flex-direction:column;width:var(--dashboard-width)!important;z-index: 1}
+        .dashboard.vertical {
+            flex-direction: column;
+            width: var(--dashboard-width)!important;
+            z-index: 1;
+            transform-origin: left;
+        }
         .dashboard.collapsed.horizontal {
-          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
-          display:flex!important;justify-content:center!important;align-items:center!important
+          flex-direction: row;
+          width: auto;
+          max-width: 90vw;
+          margin-inline: auto;
+          position: relative!important;
+          display: flex!important;
+          justify-content: center!important;
+          align-items: center!important;
+          transform-origin: top;
         }
-        .dashboard.horizontal {
-          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
-          display:flex!important;justify-content:center!important;align-items:center!important,min-height:300px!important;z-index:1
+              .dashboard.horizontal:not(.collapsed) {
+           flex-direction: row;
+           width: auto;
+           max-width: 90vw;
+           margin-inline: auto;
+           position: relative!important;
+           display: flex!important;
+           justify-content: center!important;
+           align-items: center!important;
+           z-index: 1;
+
+           transform-origin: top;
         }
         /* collapsed width */
         .dashboard.collapsed.vertical{width:90px!important}
+        
+        /* Animazioni scale per sidebar */
+        .dashboard.vertical:not(.collapsed){
+          animation: expandScaleVertical 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+        }
+        .dashboard.horizontal:not(.collapsed) {
+          animation: expandScaleHorizontal 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+        }
 
         /* content area scroll */
         .dashboard .content{overflow-y:auto;max-height:100vh;flex:1 1 auto}
@@ -2168,7 +2212,6 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.expanded-content.horizontal{
           max-width:none!important;width:100%!important;
         }
-
         /* Assicura che anche l'area contenuti non abbia limiti */
         .dashboard.expanded-content.vertical .content{
           max-height:none!important;
@@ -2608,6 +2651,96 @@ class HaDashboardSidebar extends LitElement {
             width: 100px;
             white-space: nowrap;
         }
+
+        /* ============================================================================ */
+        /* ---------- ANIMAZIONI ESPANSIONE ------------------------------------------ */
+        /* ============================================================================ */
+        .dashboard.expanded-content .content {
+          animation: fadeInContent 0.5s ease 0.2s both;
+        }
+
+        @keyframes fadeInContent {
+          0% {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeOutContent {
+          0% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          100% {
+            opacity: 0.8;
+            transform: translateY(-5px);
+          }
+        }
+
+        /* Keyframes per animazioni scale sidebar */
+        @keyframes expandScaleVertical {
+          0% {
+            transform: scaleX(0.3) scaleY(0.95);
+            opacity: 0.8;
+          }
+          50% {
+            transform: scaleX(1.02) scaleY(1.01);
+            opacity: 0.9;
+          }
+          100% {
+            transform: scaleX(1) scaleY(1);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes collapseScaleVertical {
+          0% {
+            transform: scaleX(1) scaleY(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scaleX(0.8) scaleY(0.98);
+            opacity: 0.9;
+          }
+          100% {
+            transform: scaleX(0.3) scaleY(0.95);
+            opacity: 0.8;
+          }
+        }
+        
+        @keyframes expandScaleHorizontal {
+          0% {
+            transform: scaleY(0.1);
+            opacity: 0.7;
+          }
+          60% {
+            transform: scaleY(1.05);
+            opacity: 0.95;
+          }
+          100% {
+            transform: scaleY(1);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes collapseScaleHorizontal {
+          0% {
+            transform: scaleY(1);
+            opacity: 1;
+          }
+          40% {
+            transform: scaleY(0.6);
+            opacity: 0.8;
+          }
+          100% {
+            transform: scaleY(0.1);
+            opacity: 0.7;
+          }
+        }
     `;
   }
   async _createCustomCard(entity) {
@@ -3046,7 +3179,7 @@ class HaDashboardSidebar extends LitElement {
                          tabindex="0"
                          @action=${e => this._handleAction(e, entity)}
                          @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                         >
                       <div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
                     </div>
                   </div>`;
@@ -3086,7 +3219,7 @@ class HaDashboardSidebar extends LitElement {
                          tabindex="0"
                          @action=${e => this._handleAction(e, entity)}
                          @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                         >
                       <div class="icon">${this._renderIcon(entity, 'entity')}</div>
                     </div>
                   </div>`;
@@ -3097,7 +3230,7 @@ class HaDashboardSidebar extends LitElement {
               <div class="card entity-card"
                    @action=${e => this._handleAction(e, entity)}
                    @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                   @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
+                   >
                 ${until(this._buildEntityCard(entity.entity), html`<span style="opacity:.6;">…</span>`)}
               </div>`;
       }
@@ -3136,7 +3269,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+               >
             ${this._renderIcon(config, 'cover')}
           </div>
         </div>
@@ -3240,7 +3373,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+               >
             ${this._renderIcon(config, 'climate')}
           </div>
         </div>
@@ -3362,7 +3495,7 @@ class HaDashboardSidebar extends LitElement {
            role="button"
            @action=${e => this._handleAction(e, config)}
            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-           @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+           >
         ${this._renderIcon(config, "light")}
       </div>
       `;
@@ -3474,7 +3607,7 @@ class HaDashboardSidebar extends LitElement {
               tabindex="0"
               @action=${e => this._handleAction(e, config)}
               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-              @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+              
             >
               ${this._renderIcon(config, "switch")}
             </div>`
@@ -3544,7 +3677,7 @@ class HaDashboardSidebar extends LitElement {
             }
           }}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+          
         >
           <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
         </button>
@@ -3571,7 +3704,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+          
         >
           ${this._renderIcon(config, "fan")}
         </div>
@@ -3659,7 +3792,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
+          
         >
           ${this._renderIcon(config, "media_player")}
         </div>
@@ -3758,7 +3891,7 @@ class HaDashboardSidebar extends LitElement {
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+            >
             ${renderValue()}
           </div>
         ` : html`
@@ -3766,14 +3899,14 @@ class HaDashboardSidebar extends LitElement {
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+            >
             ${config.name || state.attributes.friendly_name}
           </div>
           <div class="sensor-state ${isActive ? "active" : ""}"
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+            >
             ${renderValue()}
           </div>
         `}
@@ -3793,7 +3926,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+               >
             <div class="weather-icon ${weatherIcon.animation}">
               ${weatherIcon.icon}
             </div>
@@ -3806,7 +3939,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
+               >
             ${state.attributes.temperature}°${state.attributes.temperature_unit || ""}
           </div>
           <div class="label">${config.name || weatherState}</div>
