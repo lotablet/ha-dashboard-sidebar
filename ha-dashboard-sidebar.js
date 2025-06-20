@@ -20,6 +20,11 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   let timer;
 
   const start = (ev) => {
+    // Prevent default behavior for touchstart to avoid issues on some browsers
+    if (ev.type === "touchstart") {
+      ev.preventDefault();
+    }
+
     el._actionHandlerHeld = false;
     el._lastActionType = null;
 
@@ -46,7 +51,7 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el.__endHandler = end;
 
   el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: true });
+  el.addEventListener("touchstart", start, { passive: false });
   el.addEventListener("mouseup", end);
   el.addEventListener("touchend", end);
 
@@ -72,8 +77,7 @@ class HaDashboardSidebarEditor extends LitElement {
     hass: { type: Object },
     _config: { type: Object },
     _pickerOpenIndex: { state: true },
-    _zIndexActive: { state: true },
-    _updatePending: { state: true }
+    _zIndexActive: { state: true }
   };
 
   constructor() {
@@ -89,9 +93,8 @@ class HaDashboardSidebarEditor extends LitElement {
 
     };
     this._pickerOpenIndex = null;
-
+    this._iconHover = {};
     this._zIndexActive = false;
-    this._updatePending = false;
     this._widthRaw = "";
     this._pendingYaml = {};
     this._heightRaw = "";
@@ -107,16 +110,6 @@ class HaDashboardSidebarEditor extends LitElement {
         .then(mod => window.jsyaml = mod)
         .catch(() => console.warn("js-yaml non caricato"));
     }
-  }
-
-  shouldUpdate(changedProps) {
-    // OTTIMIZZAZIONE MIRATA: Solo per l'editor, non per la sidebar principale
-    // L'editor non ha bisogno di re-renderizzare quando cambia solo hass
-    if (changedProps.has("hass") && changedProps.size === 1) {
-      return false; // Blocca re-render per solo cambio hass nell'EDITOR
-    }
-
-    return super.shouldUpdate(changedProps);
   }
 
   // Localization function
@@ -230,15 +223,7 @@ class HaDashboardSidebarEditor extends LitElement {
     }
 
     this._config = updated;
-
-    // OTTIMIZZAZIONE LEGGERA: Evita solo re-render multipli immediati
-    if (!this._updatePending) {
-      this._updatePending = true;
-      requestAnimationFrame(() => {
-        this._updatePending = false;
     this.requestUpdate();
-      });
-    }
 
     const cfg = { type: "custom:ha-dashboard-sidebar", ...this._config };
     if (cfg.mode === "horizontal") {
@@ -951,6 +936,16 @@ class HaDashboardSidebarEditor extends LitElement {
       </div>
       <div class="big-divider"></div>
       ${this._config.entities.map((ent, i) => {
+        if (ent.type === "custom_card") {
+          // Sincronizzazione automatica editor <-- AGGIUNGI QUESTO
+          const yamlCurrent = ent.card ? window.jsyaml?.dump?.(ent.card) : "";
+          if (
+            typeof this._pendingYaml[i] !== "string" ||
+            this._pendingYaml[i].trim() !== yamlCurrent.trim()
+          ) {
+            this._pendingYaml[i] = yamlCurrent;
+          }
+        }
 
         return html`
           <div class="divider" style="display: flex; align-items: center; padding: 0;">
@@ -964,14 +959,16 @@ class HaDashboardSidebarEditor extends LitElement {
                 ?disabled=${i === 0}
                 title="Sposta su"
                 @click=${() => this._moveUp(i)}
+                @mouseenter=${() => { this._iconHover[`up-${i}`] = true; this.requestUpdate(); }}
+                @mouseleave=${() => { this._iconHover[`up-${i}`] = false; this.requestUpdate(); }}
                 style=${`
                   --mdc-icon-size: 22px;
                   cursor: ${i === 0 ? 'not-allowed' : 'pointer'};
-                  color: var(--primary-text-color, #fff);
+                  color: ${this._iconHover[`up-${i}`] && i !== 0 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
                   opacity: ${i === 0 ? 0.3 : 1};
                   transition: color 0.15s, filter 0.15s;
+                  filter: ${this._iconHover[`up-${i}`] && i !== 0 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
                 `}
-                class="editor-hover-icon ${i === 0 ? 'disabled' : ''}"
               ></ha-icon>
             </div>
             <div class="icon-circle">
@@ -981,14 +978,16 @@ class HaDashboardSidebarEditor extends LitElement {
                 ?disabled=${i === this._config.entities.length - 1}
                 title="Sposta giù"
                 @click=${() => this._moveDown(i)}
+                @mouseenter=${() => { this._iconHover[`down-${i}`] = true; this.requestUpdate(); }}
+                @mouseleave=${() => { this._iconHover[`down-${i}`] = false; this.requestUpdate(); }}
                 style=${`
                   --mdc-icon-size: 22px;
                   cursor: ${i === this._config.entities.length - 1 ? 'not-allowed' : 'pointer'};
-                  color: var(--primary-text-color, #fff);
+                  color: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'var(--accent-color, #ff9800)' : 'var(--primary-text-color, #fff)'};
                   opacity: ${i === this._config.entities.length - 1 ? 0.3 : 1};
                   transition: color 0.15s, filter 0.15s;
+                  filter: ${this._iconHover[`down-${i}`] && i !== this._config.entities.length - 1 ? 'drop-shadow(0 0 3px var(--accent-color, #ff9800))' : 'none'};
                 `}
-                class="editor-hover-icon ${i === this._config.entities.length - 1 ? 'disabled' : ''}"
               ></ha-icon>
             </div>
             <div style="width: 10px;"></div>
@@ -997,13 +996,15 @@ class HaDashboardSidebarEditor extends LitElement {
               class="delete divider-delete"
               @click=${() => this._del(i)}
               title="Remove"
+              @mouseenter=${() => { this._iconHover[`del-${i}`] = true; this.requestUpdate(); }}
+              @mouseleave=${() => { this._iconHover[`del-${i}`] = false; this.requestUpdate(); }}
               style=${`
                 --mdc-icon-size: 28px;
                 cursor:pointer;
-                color: #e35;
+                color: ${this._iconHover[`del-${i}`] ? 'red' : '#e35'};
                 transition: color 0.15s, filter 0.15s;
+                filter: ${this._iconHover[`del-${i}`] ? 'drop-shadow(0 0 5px var(--accent-color, #ff9800))' : 'none'};
               `}
-              class="editor-delete-icon"
             />
           </div>
           <div class="row">
@@ -1330,20 +1331,6 @@ class HaDashboardSidebarEditor extends LitElement {
       --mdc-icon-size: 20px;
       color: var(--primary-text-color); /* corretto: era '---' */
     }
-
-    /* Stili hover per editor senza JavaScript - PERFORMANCE FIX */
-    .editor-hover-icon:not(.disabled):hover {
-      color: var(--accent-color, #ff9800) !important;
-      filter: drop-shadow(0 0 3px var(--accent-color, #ff9800)) !important;
-    }
-    .editor-delete-icon:hover {
-      color: red !important;
-      filter: drop-shadow(0 0 5px var(--accent-color, #ff9800)) !important;
-    }
-    .editor-hover-icon.disabled:hover {
-      color: var(--primary-text-color, #fff) !important;
-      filter: none !important;
-    }
   `;
 }
 customElements.define("ha-dashboard-sidebar-editor", HaDashboardSidebarEditor);
@@ -1366,7 +1353,6 @@ class HaDashboardSidebar extends LitElement {
       _optimisticUntil: { type: Number, state: true },
       _miniEntity: { type: Object },
       _miniPos: { type: Object },
-      _expandContent: { type: Boolean },
     };
   }
 
@@ -1382,9 +1368,10 @@ class HaDashboardSidebar extends LitElement {
     this._localVolume = 0;
     this._localPosition = 0;
     this._localFanSpeed = 0;
+    this._expandContent = false;
     this._pendingTemp = undefined;
-
-
+    this._optimisticTemp = undefined;
+    this._optimisticUntil = 0;
     this._weatherIcons = {
       'clear-night': {
         icon: '🌙',
@@ -1450,59 +1437,60 @@ class HaDashboardSidebar extends LitElement {
   }
   _toggleExpandContent() {
     this._expandContent = !this._expandContent;
+    this.requestUpdate();
   }
+  updated() {
+    const entityId = this._config?.entity || this.config?.entity;
+    if (!entityId || !this.hass) return;
 
+    const state = this.hass.states[entityId];
+    if (!state) return;
 
-
-  shouldUpdate(changedProperties) {
-    // Permetti il primo render quando hass viene impostato per la prima volta
-    if (changedProperties.has("hass") && !changedProperties.get("hass")) {
-      return true; // Primo render con hass
+    const actualTemp = state.attributes.temperature;
+    if (this._optimisticTemp !== undefined && actualTemp === this._optimisticTemp) {
+      this._optimisticTemp = undefined;
+      this._optimisticUntil = 0;
+      this.requestUpdate();
     }
-
-    // SOLUZIONE MIRATA: Solo custom card causano problemi
-    if (changedProperties.has('hass') && changedProperties.size === 1) {
-      // Aggiorna SOLO le custom card senza re-render dell'intera sidebar
-      this._updateExistingCustomCards(this.hass);
-
-      // NON fare re-render dell'intera sidebar per aggiornamenti hass
-      // I sensori e altre entità si aggiornano automaticamente tramite i loro stati
-      return false;
+    if (this._optimisticUntil && Date.now() > this._optimisticUntil) {
+      this._optimisticTemp = undefined;
+      this._optimisticUntil = 0;
+      this.requestUpdate();
     }
-
-    // Permetti re-render SOLO per cambiamenti strutturali
-    return changedProperties.has("config") ||
-           changedProperties.has("_collapsed") ||
-           changedProperties.has("_expandContent") ||
-           changedProperties.has("_miniEntity") ||
-           changedProperties.has("_time");
   }
 
 
+  updated(changedProps) {
+    super.updated(changedProps);
+    if (changedProps.has("hass")) {
+      this.config.entities.forEach((entity) => {
+        const state = this.hass.states[entity.entity];
+        if (!state) return;
 
-  // Aggiornamento semplice delle custom card
-  _updateExistingCustomCards(newHass) {
-    if (!this._createdCards || this._createdCards.size === 0) return;
-
-    // Aggiorna tutte le custom card esistenti con il nuovo hass
-    this._createdCards.forEach((card) => {
-      if (card && card.hass !== newHass) {
-        card.hass = newHass;
-      }
-    });
+        switch (entity.entity.split(".")[0]) {
+          case "climate":
+            break;
+          case "media_player":
+            this._localVolume = (state.attributes.volume_level || 0) * 100;
+            break;
+          case "cover":
+            this._localPosition = state.attributes.current_position || 0;
+            break;
+          case "fan":
+            this._localFanSpeed = state.attributes.percentage || 0;
+            break;
+          case "light":
+            if ("brightness" in state.attributes) {
+              this._localBrightness = Math.round((state.attributes.brightness / 255) * 100);
+            }
+            if ("color_temp_kelvin" in state.attributes) {
+              this._localKelvin = state.attributes.color_temp_kelvin;
+            }
+            break;
+        }
+      });
+    }
   }
-
-
-
-
-
-
-
-
-
-
-
-
 
   static async getStubConfig(hass) {
     return {
@@ -1615,27 +1603,16 @@ class HaDashboardSidebar extends LitElement {
 
         .content{
           flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;
-          scrollbar-width:none;-ms-overflow-style:none;
-          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease
-        }
-        .dashboard.collapsed .content{
-          cursor:pointer;
-        }
-        .dashboard.collapsed .content:hover{
-          background:rgba(255,255,255,0.05);
-          border-radius:12px;
-        }
+          scrollbar-width:none;-ms-overflow-style:none}
         .content::-webkit-scrollbar{width:0;height:0}
         .toggle-area{position:absolute;inset:0;cursor:pointer;background:transparent;z-index:1}
 
         .clock{
-          font-size:2.25rem;font-weight:600;margin-bottom:8px;
-          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          font-size:2.25rem;font-weight:600;margin-bottom:8px;transition:.3s;
           color:var(--primary-text-color,#fff);letter-spacing:-1px;z-index:1}
         .collapsed .clock{font-size:1.5rem;letter-spacing:0}
 
-        .title{font-size:1rem;font-weight:500;opacity:.7;
-          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        .title{font-size:1rem;font-weight:500;opacity:.7;transition:.3s;
           color:var(--primary-text-color,#fff);margin:0}
         .collapsed .title{opacity:0;height:0}
 
@@ -1682,6 +1659,7 @@ class HaDashboardSidebar extends LitElement {
             background: transparent;
             border-radius: 24px;
             z-index: 9000;
+            padding: 10px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -1691,8 +1669,6 @@ class HaDashboardSidebar extends LitElement {
             left: 50% !important;
             transform: translate(-50%, -50%) !important;
             overflow: visible !important;
-            min-width: 50vw;
-            max-width: 100vw;
         }
         .mini-popup::after {
         	/* content: ""; */
@@ -1767,49 +1743,19 @@ class HaDashboardSidebar extends LitElement {
           box-shadow:var(--ha-card-box-shadow,0 8px 32px rgba(0,0,0,.25));
           width:auto;max-height:80vh;overflow:hidden;position:relative;backdrop-filter:blur(10px);
           border:1px solid var(--divider-color,rgba(255,255,255,.1));display:flex;flex-direction:column;
-          transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-          transform-origin: center;
+          transition:all .5s ease,height .5s,width .5s
         }
-        .dashboard.vertical {
-            flex-direction: column;
-            width: var(--dashboard-width)!important;
-            z-index: 1;
-            transform-origin: left;
-        }
+        .dashboard.vertical{flex-direction:column;width:var(--dashboard-width)!important;z-index: 1}
         .dashboard.collapsed.horizontal {
-          flex-direction: row;
-          width: auto;
-          max-width: 90vw;
-          margin-inline: auto;
-          position: relative!important;
-          display: flex!important;
-          justify-content: center!important;
-          align-items: center!important;
-          transform-origin: top;
+          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
+          display:flex!important;justify-content:center!important;align-items:center!important
         }
-              .dashboard.horizontal:not(.collapsed) {
-           flex-direction: row;
-           width: auto;
-           max-width: 90vw;
-           margin-inline: auto;
-           position: relative!important;
-           display: flex!important;
-           justify-content: center!important;
-           align-items: center!important;
-           z-index: 1;
-
-           transform-origin: top;
+        .dashboard.horizontal {
+          flex-direction:row;width:auto;max-width:90vw;margin-inline:auto;position:relative!important;
+          display:flex!important;justify-content:center!important;align-items:center!important,min-height:300px!important;z-index:1
         }
         /* collapsed width */
         .dashboard.collapsed.vertical{width:90px!important}
-
-        /* Animazioni scale per sidebar */
-        .dashboard.vertical:not(.collapsed){
-          animation: expandScaleVertical 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
-        }
-        .dashboard.horizontal:not(.collapsed) {
-          animation: expandScaleHorizontal 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
-        }
 
         /* content area scroll */
         .dashboard .content{overflow-y:auto;max-height:100vh;flex:1 1 auto}
@@ -2224,6 +2170,7 @@ class HaDashboardSidebar extends LitElement {
         .dashboard.expanded-content.horizontal{
           max-width:none!important;width:100%!important;
         }
+
         /* Assicura che anche l'area contenuti non abbia limiti */
         .dashboard.expanded-content.vertical .content{
           max-height:none!important;
@@ -2663,96 +2610,6 @@ class HaDashboardSidebar extends LitElement {
             width: 100px;
             white-space: nowrap;
         }
-
-        /* ============================================================================ */
-        /* ---------- ANIMAZIONI ESPANSIONE ------------------------------------------ */
-        /* ============================================================================ */
-        .dashboard.expanded-content .content {
-          animation: fadeInContent 0.5s ease 0.2s both;
-        }
-
-        @keyframes fadeInContent {
-          0% {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes fadeOutContent {
-          0% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-          100% {
-            opacity: 0.8;
-            transform: translateY(-5px);
-          }
-        }
-
-        /* Keyframes per animazioni scale sidebar */
-        @keyframes expandScaleVertical {
-          0% {
-            transform: scaleX(0.3) scaleY(0.95);
-            opacity: 0.8;
-          }
-          50% {
-            transform: scaleX(1.02) scaleY(1.01);
-            opacity: 0.9;
-          }
-          100% {
-            transform: scaleX(1) scaleY(1);
-            opacity: 1;
-          }
-        }
-
-        @keyframes collapseScaleVertical {
-          0% {
-            transform: scaleX(1) scaleY(1);
-            opacity: 1;
-          }
-          50% {
-            transform: scaleX(0.8) scaleY(0.98);
-            opacity: 0.9;
-          }
-          100% {
-            transform: scaleX(0.3) scaleY(0.95);
-            opacity: 0.8;
-          }
-        }
-
-        @keyframes expandScaleHorizontal {
-          0% {
-            transform: scaleY(0.1);
-            opacity: 0.7;
-          }
-          60% {
-            transform: scaleY(1.05);
-            opacity: 0.95;
-          }
-          100% {
-            transform: scaleY(1);
-            opacity: 1;
-          }
-        }
-
-        @keyframes collapseScaleHorizontal {
-          0% {
-            transform: scaleY(1);
-            opacity: 1;
-          }
-          40% {
-            transform: scaleY(0.6);
-            opacity: 0.8;
-          }
-          100% {
-            transform: scaleY(0.1);
-            opacity: 0.7;
-          }
-        }
     `;
   }
   async _createCustomCard(entity) {
@@ -2760,18 +2617,7 @@ class HaDashboardSidebar extends LitElement {
 
     const id = entity.card.entity || entity.card.unique_id || JSON.stringify(entity.card);
 
-    // Se la card esiste già, aggiorna solo hass invece di ricrearla
-    if (this._createdCards.has(id)) {
-      const existingCard = this._createdCards.get(id);
-      if (existingCard) {
-        existingCard.hass = this.hass;
-        // Aggiorna la configurazione se è cambiata
-        if (typeof existingCard.setConfig === "function") {
-          existingCard.setConfig(entity.card);
-        }
-      }
-      return;
-    }
+    if (this._createdCards.has(id)) return;
 
     if (!window.loadCardHelpers) {
       console.error('[sidebar] Card Helpers not available');
@@ -2786,13 +2632,6 @@ class HaDashboardSidebar extends LitElement {
       }
       card.hass = this.hass;
       this._createdCards.set(id, card);
-
-      // Aggiunge stabilità alla card per evitare crash
-      if (card.style) {
-        card.style.transition = 'none';
-        card.style.willChange = 'auto';
-      }
-
       this.requestUpdate();
     } catch (err) {
       console.error('[sidebar] Errore nella creazione della custom card:', err);
@@ -2885,11 +2724,7 @@ class HaDashboardSidebar extends LitElement {
 
   _updateTime() {
     this._timeInterval = setInterval(() => {
-      const newTime = this._getCurrentTime();
-      if (newTime !== this._time) {
-        this._time = newTime;
-        // Don't call requestUpdate here - let shouldUpdate handle it
-      }
+      this._time = this._getCurrentTime();
     }, 1000);
   }
 
@@ -3055,11 +2890,11 @@ class HaDashboardSidebar extends LitElement {
     event.detail = { entityId };
     this.dispatchEvent(event);
   }
+  _expandContent = false;
+
   _toggleCollapse() {
     this._collapsed = !this._collapsed;
   }
-
-
 
   _handlePersonClick(entity) {
     this._selectedEntity = entity;
@@ -3193,7 +3028,7 @@ class HaDashboardSidebar extends LitElement {
       }
   }
 
-  _renderEntity(entity, index = 0) {
+  _renderEntity(entity) {
       if (!entity) return html``;
 
       /* -------- collapsed:true / false sul singolo entity -------- */
@@ -3213,7 +3048,7 @@ class HaDashboardSidebar extends LitElement {
                          tabindex="0"
                          @action=${e => this._handleAction(e, entity)}
                          @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                         >
+                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
                       <div class="icon">${this._renderIcon(entity, 'custom_card')}</div>
                     </div>
                   </div>`;
@@ -3253,7 +3088,7 @@ class HaDashboardSidebar extends LitElement {
                          tabindex="0"
                          @action=${e => this._handleAction(e, entity)}
                          @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                         >
+                         @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
                       <div class="icon">${this._renderIcon(entity, 'entity')}</div>
                     </div>
                   </div>`;
@@ -3264,7 +3099,7 @@ class HaDashboardSidebar extends LitElement {
               <div class="card entity-card"
                    @action=${e => this._handleAction(e, entity)}
                    @mousedown=${e => this._bindActionHandler(e.currentTarget, entity)}
-                   >
+                   @touchstart=${e => this._bindActionHandler(e.currentTarget, entity)}>
                 ${until(this._buildEntityCard(entity.entity), html`<span style="opacity:.6;">…</span>`)}
               </div>`;
       }
@@ -3273,17 +3108,17 @@ class HaDashboardSidebar extends LitElement {
       const domain = entity.entity.split('.')[0];
 
       switch (domain) {
-          case 'weather':       return this._renderWeather(entity, index);
-          case 'person':        return this._renderPerson(entity, index);
-          case 'sensor':        return this._renderSensor(entity, index);
-          case 'cover':         return this._renderCover(entity, index);
-          case 'climate':       return this._renderClimate(entity, index);
-          case 'switch':        return this._renderSwitch(entity, index);
+          case 'weather':       return this._renderWeather(entity);
+          case 'person':        return this._renderPerson(entity);
+          case 'sensor':        return this._renderSensor(entity);
+          case 'cover':         return this._renderCover(entity);
+          case 'climate':       return this._renderClimate(entity);
+          case 'switch':        return this._renderSwitch(entity);
           case 'script':
-          case 'button':        return this._renderButton(entity, index);
-          case 'fan':           return this._renderFan(entity, index);
-          case 'media_player':  return this._renderMediaPlayer(entity, index);
-          case 'light':         return this._renderLight(entity, index);
+          case 'button':        return this._renderButton(entity);
+          case 'fan':           return this._renderFan(entity);
+          case 'media_player':  return this._renderMediaPlayer(entity);
+          case 'light':         return this._renderLight(entity);
           default:              return html``;
       }
   }
@@ -3303,7 +3138,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               >
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, 'cover')}
           </div>
         </div>
@@ -3372,7 +3207,7 @@ class HaDashboardSidebar extends LitElement {
       </div>
     `;
   }
-  _renderClimate(config, index = 0) {
+  _renderClimate(config) {
     const state = this.hass.states[config.entity];
     if (!state) return html``;
 
@@ -3402,12 +3237,12 @@ class HaDashboardSidebar extends LitElement {
 
     if (this._collapsed) {
       return html`
-        <div class="card climate" data-entity-index="${index}">
+        <div class="card climate">
           <div class="collapsed-clickable-box"
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               >
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${this._renderIcon(config, 'climate')}
           </div>
         </div>
@@ -3415,7 +3250,7 @@ class HaDashboardSidebar extends LitElement {
     }
 
     return html`
-      <div class="card climate" data-entity-index="${index}">
+      <div class="card climate">
         <div class="climate-layout">
           <div class="climate-controls">
             <div class="climate-title">
@@ -3453,6 +3288,7 @@ class HaDashboardSidebar extends LitElement {
                   const val = +e.target.value;
                   this._optimisticTemp = val;
                   this._optimisticUntil = Date.now() + 8000;
+                  this.requestUpdate();
                 }}
                 @change=${e => {
                   const val = +e.target.value;
@@ -3488,7 +3324,7 @@ class HaDashboardSidebar extends LitElement {
     this._optimisticTemp = newTemp;
     this._optimisticUntil = Date.now() + 8000;
 
-
+    this.requestUpdate();
     this._callService('climate', 'set_temperature', entityId, {
       temperature: newTemp
     });
@@ -3528,7 +3364,7 @@ class HaDashboardSidebar extends LitElement {
            role="button"
            @action=${e => this._handleAction(e, config)}
            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-           >
+           @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
         ${this._renderIcon(config, "light")}
       </div>
       `;
@@ -3640,7 +3476,7 @@ class HaDashboardSidebar extends LitElement {
               tabindex="0"
               @action=${e => this._handleAction(e, config)}
               @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-
+              @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
             >
               ${this._renderIcon(config, "switch")}
             </div>`
@@ -3710,7 +3546,7 @@ class HaDashboardSidebar extends LitElement {
             }
           }}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
         >
           <ha-icon icon="mdi:gesture-tap-button"></ha-icon>
         </button>
@@ -3737,7 +3573,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
         >
           ${this._renderIcon(config, "fan")}
         </div>
@@ -3825,7 +3661,7 @@ class HaDashboardSidebar extends LitElement {
           tabindex="0"
           @action=${e => this._handleAction(e, config)}
           @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-
+          @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
         >
           ${this._renderIcon(config, "media_player")}
         </div>
@@ -3924,7 +3760,7 @@ class HaDashboardSidebar extends LitElement {
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            >
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${renderValue()}
           </div>
         ` : html`
@@ -3932,14 +3768,14 @@ class HaDashboardSidebar extends LitElement {
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            >
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${config.name || state.attributes.friendly_name}
           </div>
           <div class="sensor-state ${isActive ? "active" : ""}"
             tabindex="0"
             @action=${e => this._handleAction(e, config)}
             @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-            >
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${renderValue()}
           </div>
         `}
@@ -3959,7 +3795,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               >
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             <div class="weather-icon ${weatherIcon.animation}">
               ${weatherIcon.icon}
             </div>
@@ -3972,7 +3808,7 @@ class HaDashboardSidebar extends LitElement {
                tabindex="0"
                @action=${e => this._handleAction(e, config)}
                @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
-               >
+               @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             ${state.attributes.temperature}°${state.attributes.temperature_unit || ""}
           </div>
           <div class="label">${config.name || weatherState}</div>
@@ -4206,7 +4042,7 @@ class HaDashboardSidebar extends LitElement {
         </div>
 
         <div class="content">
-          ${this.config.entities.map((entity, index) => this._renderEntity(entity, index))}
+          ${this.config.entities.map(entity => this._renderEntity(entity))}
         </div>
 
         ${isVertical ? html`
