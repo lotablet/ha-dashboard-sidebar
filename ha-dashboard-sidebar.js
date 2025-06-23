@@ -2113,29 +2113,9 @@ class HaDashboardSidebar extends LitElement {
         .map-container ha-map{width:100%!important;height:100%!important;display:block}
 
 
-                 .mini-popup .card{background:var(--card-background-color);border:1px solid var(--divider-color);box-shadow:var(--ha-card-box-shadow);border-radius:var(--ha-card-border-radius);padding:12px;overflow:visible!important}
-         .mini-popup .content{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:auto!important;max-width:90vw!important}
-         .mini-popup ha-card{width:auto!important}
-         .mini-popup-content {
-             max-height: 80vh;
-             overflow-y: auto;
-             overflow-x: hidden;
-             scrollbar-width: thin;
-             scrollbar-color: var(--divider-color) transparent;
-         }
-         .mini-popup-content::-webkit-scrollbar {
-             width: 6px;
-         }
-         .mini-popup-content::-webkit-scrollbar-track {
-             background: transparent;
-         }
-         .mini-popup-content::-webkit-scrollbar-thumb {
-             background: var(--divider-color);
-             border-radius: 3px;
-         }
-         .mini-popup-content::-webkit-scrollbar-thumb:hover {
-             background: var(--primary-color);
-         }
+        .mini-popup .card{background:var(--card-background-color);border:1px solid var(--divider-color);box-shadow:var(--ha-card-box-shadow);border-radius:var(--ha-card-border-radius);padding:12px;overflow:visible!important}
+        .mini-popup .content{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:auto!important;max-width:90vw!important}
+        .mini-popup ha-card{width:auto!important}
 
 
         .dashboard.collapsed .person,
