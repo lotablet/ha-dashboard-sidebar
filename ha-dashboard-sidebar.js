@@ -1372,6 +1372,7 @@ class HaDashboardSidebar extends LitElement {
     this._pendingTemp = undefined;
     this._optimisticTemp = undefined;
     this._optimisticUntil = 0;
+    this._lastAction = null; // Prevent duplicate actions
     this._weatherIcons = {
       'clear-night': {
         icon: '🌙',
@@ -2698,6 +2699,15 @@ class HaDashboardSidebar extends LitElement {
   }
   _handleAction(e, config) {
     e.stopPropagation();
+    e.preventDefault();
+
+    // Prevent duplicate actions
+    const now = Date.now();
+    const actionKey = `${config.entity || config.type}_${e.detail?.action || 'tap'}`;
+    if (this._lastAction && this._lastAction.key === actionKey && (now - this._lastAction.time) < 500) {
+      return; // Ignore duplicate action within 500ms
+    }
+    this._lastAction = { key: actionKey, time: now };
 
     if (config.show_popup) {
       this._openMiniPopup(config);
@@ -2705,8 +2715,8 @@ class HaDashboardSidebar extends LitElement {
     }
 
     const action = e.detail?.action || "tap";
-    const actionKey = `${action}_action`;
-    const actionConfig = config[actionKey];
+    const actionKey2 = `${action}_action`;
+    const actionConfig = config[actionKey2];
     if (!actionConfig || actionConfig.action === "none") {
       return;
     }
