@@ -1669,6 +1669,7 @@ class HaDashboardSidebar extends LitElement {
             left: 50% !important;
             transform: translate(-50%, -50%) !important;
             overflow: visible !important;
+            min-width: 100vw;
         }
         .mini-popup::after {
         	/* content: ""; */
@@ -2115,6 +2116,38 @@ class HaDashboardSidebar extends LitElement {
 
         .mini-popup .card{background:var(--card-background-color);border:1px solid var(--divider-color);box-shadow:var(--ha-card-box-shadow);border-radius:var(--ha-card-border-radius);padding:12px;overflow:visible!important}
         .mini-popup .content{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:auto!important;max-width:90vw!important}
+
+        /* MINI-POPUP CONTENT SCROLL - QUESTO È IL CONTENITORE PRINCIPALE */
+        .mini-popup-content {
+          max-height: 90vh !important;
+          max-width: 90vw !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          background: var(--card-background-color);
+          border-radius: var(--ha-card-border-radius, 12px);
+          border: 1px solid var(--divider-color);
+          box-shadow: var(--ha-card-box-shadow);
+          padding: 0 !important;
+        }
+
+        /* Scrollbar per mini-popup-content */
+        .mini-popup-content::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .mini-popup-content::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+        }
+
+        .mini-popup-content::-webkit-scrollbar-thumb {
+          background: var(--scrollbar-thumb-color, rgba(255, 255, 255, 0.4));
+          border-radius: 4px;
+        }
+
+        .mini-popup-content::-webkit-scrollbar-thumb:hover {
+          background: var(--scrollbar-thumb-color, rgba(255, 255, 255, 0.6));
+        }
         .mini-popup ha-card{width:auto!important}
 
 
@@ -2704,7 +2737,20 @@ class HaDashboardSidebar extends LitElement {
         break;
 
       case "navigate":
-        window.location.href = actionConfig.navigation_path;
+        if (actionConfig.navigation_path) {
+          // Use Home Assistant's standard navigation event
+          window.history.pushState(null, "", actionConfig.navigation_path);
+          window.dispatchEvent(new CustomEvent("location-changed", {
+            bubbles: true,
+            composed: true
+          }));
+          // Also fire the navigation event that HA expects
+          this.dispatchEvent(new CustomEvent("hass-navigate", {
+            detail: { path: actionConfig.navigation_path },
+            bubbles: true,
+            composed: true
+          }));
+        }
         break;
 
       case "url":
