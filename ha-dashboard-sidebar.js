@@ -8,6 +8,10 @@ function bindActionHandler(el, { hasHold = false } = {}) {
       el.removeEventListener("mousedown", el.__startHandler);
       el.removeEventListener("touchstart", el.__startHandler);
     }
+    if (el.__moveHandler) {
+      el.removeEventListener("touchmove", el.__moveHandler);
+      el.removeEventListener("mousemove", el.__moveHandler);
+    }
     if (el.__endHandler) {
       el.removeEventListener("mouseup", el.__endHandler);
       el.removeEventListener("touchend", el.__endHandler);
@@ -18,40 +22,63 @@ function bindActionHandler(el, { hasHold = false } = {}) {
   el._lastActionType = null;
   el._actionHandlerHeld = false;
   let timer;
+  let startX = 0;
+  let startY = 0;
+  let hasMoved = false;
 
   const start = (ev) => {
-    // Prevent default behavior for touchstart to avoid issues on some browsers
-    if (ev.type === "touchstart") {
-      ev.preventDefault();
-    }
+    // Salva la posizione iniziale
+    const touch = ev.touches ? ev.touches[0] : ev;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    hasMoved = false;
 
     el._actionHandlerHeld = false;
     el._lastActionType = null;
 
     if (hasHold) {
       timer = setTimeout(() => {
-        el._actionHandlerHeld = true;
-        el._lastActionType = "hold";
-        fireAction(el, "hold");
+        if (!hasMoved) {
+          el._actionHandlerHeld = true;
+          el._lastActionType = "hold";
+          fireAction(el, "hold");
+        }
       }, 500);
+    }
+  };
+
+  const move = (ev) => {
+    // Calcola quanto si è mosso
+    const touch = ev.touches ? ev.touches[0] : ev;
+    const deltaX = Math.abs(touch.clientX - startX);
+    const deltaY = Math.abs(touch.clientY - startY);
+    
+    // Se si è mosso più di 10px, considera come scroll
+    if (deltaX > 10 || deltaY > 10) {
+      hasMoved = true;
+      clearTimeout(timer);
     }
   };
 
   const end = (ev) => {
     clearTimeout(timer);
-    // TAP deve partire SOLO se NON è già stato fatto l'HOLD
-    if (!el._actionHandlerHeld) {
+    // TAP deve partire SOLO se NON è già stato fatto l'HOLD E NON si è mosso (scroll)
+    if (!el._actionHandlerHeld && !hasMoved) {
       el._lastActionType = "tap";
       fireAction(el, "tap");
     }
+    hasMoved = false;
   };
 
   // Store handlers for future cleanup
   el.__startHandler = start;
+  el.__moveHandler = move;
   el.__endHandler = end;
 
   el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: false });
+  el.addEventListener("touchstart", start, { passive: true });
+  el.addEventListener("mousemove", move);
+  el.addEventListener("touchmove", move, { passive: true });
   el.addEventListener("mouseup", end);
   el.addEventListener("touchend", end);
 
@@ -2977,13 +3004,19 @@ class HaDashboardSidebar extends LitElement {
     const personState = this.hass.states[personId];
     if (!personState) return html``;
     const personConfig = this.config.entities.find(e => e.entity === personId);
-    const trackerId = personConfig?.tracker_entity;
+    const trackerId = personConfig?.tracker_entity || personId;
     const tracker = trackerId ? this.hass.states[trackerId] : null;
     const latitude = tracker?.attributes?.latitude || personState.attributes.latitude;
     const longitude = tracker?.attributes?.longitude || personState.attributes.longitude;
     const gps_accuracy = tracker?.attributes?.gps_accuracy || personState.attributes.gps_accuracy;
     const last_updated = tracker?.last_updated || personState.last_updated;
     const hasLocation = latitude && longitude;
+    
+    // URL per OpenStreetMap
+    const mapUrl = hasLocation 
+      ? `https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01}&layer=mapnik&marker=${latitude},${longitude}`
+      : null;
+    
     return html`
       <div class="modal" @click=${this._closeModal}>
         <div class="modal-content" @click=${(e) => e.stopPropagation()}>
@@ -3005,40 +3038,69 @@ class HaDashboardSidebar extends LitElement {
               <span>${this._capitalize(personState.state)}</span>
             </div>
 
-            ${trackerId ? html`
-              <div style="margin-top: 4px;">Source: ${trackerId}</div>
+            ${trackerId && trackerId !== personId ? html`
+              <div style="margin-top: 4px;"><strong>Source:</strong> ${trackerId}</div>
             ` : ''}
 
             ${hasLocation ? html`
-              <div style="margin-top: 4px;">GPS Accuracy: ${gps_accuracy}m</div>
-              <div style="margin-top: 4px;">Last Updated: ${new Date(last_updated).toLocaleString()}</div>
-              <div class="map-container" style="margin-top: 16px;">
-                <ha-map
-                  .hass=${this.hass}
-                  .entities=${[trackerId]}
-                  dark_mode
-                  style="width: 100%; height: 300px;"
-                ></ha-map>
+              <div style="margin-top: 4px;"><strong>GPS Accuracy:</strong> ${gps_accuracy ? Math.round(gps_accuracy) + 'm' : 'N/A'}</div>
+              <div style="margin-top: 4px;"><strong>Last Updated:</strong> ${new Date(last_updated).toLocaleString()}</div>
+              <div style="margin-top: 4px;"><strong>Latitude:</strong> ${latitude.toFixed(6)}</div>
+              <div style="margin-top: 4px;"><strong>Longitude:</strong> ${longitude.toFixed(6)}</div>
+              <div style="margin-top: 16px;">
+                <iframe
+                  width="100%"
+                  height="400"
+                  frameborder="0"
+                  scrolling="no"
+                  marginheight="0"
+                  marginwidth="0"
+                  src="${mapUrl}"
+                  style="border: 1px solid var(--divider-color); border-radius: 8px;"
+                ></iframe>
+                <div style="margin-top: 8px; text-align: center;">
+                  <a 
+                    href="https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=15/${latitude}/${longitude}" 
+                    target="_blank"
+                    style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem;"
+                  >
+                    Apri in OpenStreetMap →
+                  </a>
+                </div>
               </div>
             ` : html`
-              <div style="margin-top: 8px;">No location data available</div>
+              <div style="margin-top: 8px; padding: 12px; background: var(--secondary-background-color); border-radius: 8px;">
+                Nessun dato di posizione disponibile
+              </div>
             `}
           </div>
         </div>
       </div>
-      <!-- GHOST MAP invisibile, solo se tracker ha lat/lon -->
-      ${tracker && tracker.attributes.latitude && tracker.attributes.longitude ? html`
-        <ha-card style="width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; position:absolute;">
-          <hui-map-card
-            .hass=${this.hass}
-            .config=${{
-              type: 'map',
-              entities: [trackerId]
-            }}
-          ></hui-map-card>
-        </ha-card>
-      ` : ''}
     `;
+  }
+
+  async _createMapCard(entityId) {
+    try {
+      // Prova a caricare gli helpers
+      if (!window.loadCardHelpers) {
+        console.warn('loadCardHelpers non disponibile');
+        return null;
+      }
+      
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({
+        type: 'map',
+        entities: [entityId],
+        dark_mode: true,
+        hours_to_show: 24,
+        default_zoom: 15
+      });
+      
+      return card;
+    } catch (err) {
+      console.error('Errore creazione mappa:', err);
+      return null;
+    }
   }
   /* ───────────────── build entity-card centrata ───────────────── */
   async _buildEntityCard(entityId) {
@@ -3885,25 +3947,38 @@ class HaDashboardSidebar extends LitElement {
     const isHome = state.state.toLowerCase() === 'home';
     const imageClass = isHome ? 'color' : 'grayscale';
 
-    // Se tap_action non c'è, o è "more-info", o è "default", forzo il mio modal custom
-    const isTapDefault = !config.tap_action || ["more-info", "default"].includes(config.tap_action.action);
-
-    // Lo stesso per hold (opzionale)
-    const isHoldDefault = !config.hold_action || config.hold_action.action === "none";
+    // Se show_popup è true E non c'è tap_action personalizzata, usa il popup persona
+    // Altrimenti usa il sistema di action handler normale
+    const usePersonModal = config.show_popup && (!config.tap_action || ["more-info", "default"].includes(config.tap_action.action));
 
     if (this._collapsed) {
+      // Se usa il popup persona, non bindare gli action handlers
+      if (usePersonModal) {
+        return html`
+          <div class="person-wrapper">
+            <div class="collapsed-clickable-box"
+              tabindex="0"
+              @click=${() => this._handlePersonClick(config)}>
+              <div class="avatar-container">
+                <img
+                  src="${entityPicture}"
+                  alt="${config.name || state.attributes.friendly_name}"
+                  class="person-image ${imageClass}"
+                />
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Altrimenti usa il sistema di action handler normale
       return html`
         <div class="person-wrapper">
           <div class="collapsed-clickable-box"
             tabindex="0"
-            @click=${isTapDefault
-              ? () => this._handlePersonClick(config)
-              : e => this._handleAction({ detail: { action: "tap" }, stopPropagation: () => {} }, config)
-            }
-            @contextmenu=${isHoldDefault
-              ? (e) => { e.preventDefault(); this._handlePersonClick(config); }
-              : e => { e.preventDefault(); this._handleAction({ detail: { action: "hold" }, stopPropagation: () => {} }, config); }
-            }>
+            @action=${e => this._handleAction(e, config)}
+            @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+            @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}>
             <div class="avatar-container">
               <img
                 src="${entityPicture}"
@@ -3917,16 +3992,29 @@ class HaDashboardSidebar extends LitElement {
     }
 
     // ESPANSA
+    if (usePersonModal) {
+      return html`
+        <div class="person"
+          @click=${() => this._handlePersonClick(config)}
+        >
+          <img
+            src="${entityPicture}"
+            alt="${config.name || state.attributes.friendly_name}"
+            class="person-image ${imageClass}"
+          />
+          <div class="person-info">
+            <div class="name">${config.name || state.attributes.friendly_name}</div>
+            <div class="status">${this._getPersonStateLabel(state.state)}</div>
+          </div>
+        </div>
+      `;
+    }
+
     return html`
       <div class="person"
-        @click=${isTapDefault
-          ? () => this._handlePersonClick(config)
-          : e => this._handleAction({ detail: { action: "tap" }, stopPropagation: () => {} }, config)
-        }
-        @contextmenu=${isHoldDefault
-          ? (e) => { e.preventDefault(); this._handlePersonClick(config); }
-          : e => { e.preventDefault(); this._handleAction({ detail: { action: "hold" }, stopPropagation: () => {} }, config); }
-        }
+        @action=${e => this._handleAction(e, config)}
+        @mousedown=${e => this._bindActionHandler(e.currentTarget, config)}
+        @touchstart=${e => this._bindActionHandler(e.currentTarget, config)}
       >
         <img
           src="${entityPicture}"
