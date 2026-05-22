@@ -1,5 +1,16 @@
 import { until } from "https://unpkg.com/lit-html/directives/until.js?module";
-import { loadHaComponents, DEFAULT_HA_COMPONENTS } from "https://cdn.jsdelivr.net/npm/@kipk/load-ha-components/+esm";
+// Inline component loader – replaces @kipk/load-ha-components to avoid
+// errors with deprecated/removed HA elements (mwc-button, ha-textfield, etc.)
+async function loadHaComponents(components) {
+  await Promise.allSettled(
+    components.map(name =>
+      Promise.race([
+        customElements.whenDefined(name),
+        new Promise(r => setTimeout(r, 3000))
+      ])
+    )
+  );
+}
 import { LitElement, html, css, nothing } from "https://unpkg.com/lit@2.8.0/index.js?module";
 function bindActionHandler(el, { hasHold = false } = {}) {
   // Remove existing handlers before adding new ones
@@ -94,10 +105,16 @@ function bindActionHandler(el, { hasHold = false } = {}) {
 }
 
 loadHaComponents([
-  ...DEFAULT_HA_COMPONENTS,
+  "ha-card",
   "ha-icon",
   "ha-icon-picker",
+  "ha-icon-button",
   "ha-dialog",
+  "ha-switch",
+  "ha-formfield",
+  "ha-selector",
+  "ha-textfield",
+  "ha-button",
 ]).catch(() => {});
 class HaDashboardSidebarEditor extends LitElement {
   static properties = {
@@ -583,12 +600,12 @@ class HaDashboardSidebarEditor extends LitElement {
              </div>
            `}
         </div>
-        <mwc-button slot="secondaryAction" @click=${this._closeCardDialog}>
+        <ha-button slot="secondaryAction" @click=${this._closeCardDialog}>
           Cancel
-        </mwc-button>
-        <mwc-button slot="primaryAction" @click=${this._closeCardDialog}>
+        </ha-button>
+        <ha-button slot="primaryAction" @click=${this._closeCardDialog}>
           Done
-        </mwc-button>
+        </ha-button>
       </ha-dialog>
     `;
   }
@@ -651,22 +668,21 @@ class HaDashboardSidebarEditor extends LitElement {
             <div style="margin-bottom: 8px; font-weight: bold;">Quick Card Types:</div>
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
               ${["entities", "entity", "button", "picture", "conditional", "history-graph", "statistics-graph", "sensor", "gauge", "markdown"].map(cardType => html`
-                <mwc-button
-                  dense
+                <ha-button
                   @click=${() => this._selectQuickCardType(index, cardType)}
                   style="margin: 2px;"
                 >
                   ${cardType}
-                </mwc-button>
+                </ha-button>
               `)}
             </div>
           </div>
 
           <!-- Fallback button -->
           <div style="margin-top: 16px; text-align: center;">
-            <mwc-button outlined @click=${() => this._fallbackToYaml(index)}>
+            <ha-button outlined @click=${() => this._fallbackToYaml(index)}>
               Use YAML Editor Instead
-            </mwc-button>
+            </ha-button>
           </div>
         </div>
       `;
@@ -683,9 +699,9 @@ class HaDashboardSidebarEditor extends LitElement {
         <ha-icon icon="mdi:alert" style="margin-bottom: 8px;"></ha-icon>
         <div>Card picker unavailable</div>
         <div style="margin: 8px 0; font-size: 12px;">${errorMessage}</div>
-        <mwc-button raised @click=${() => this._fallbackToYaml(index)}>
+        <ha-button @click=${() => this._fallbackToYaml(index)}>
           Use YAML Editor
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -710,9 +726,9 @@ class HaDashboardSidebarEditor extends LitElement {
         <div style="padding: 16px; text-align: center; color: var(--error-color);">
           <ha-icon icon="mdi:alert" style="margin-bottom: 8px;"></ha-icon>
           <div>Error loading card editor</div>
-          <mwc-button outlined @click=${() => this._fallbackToYaml(index)}>
+          <ha-button outlined @click=${() => this._fallbackToYaml(index)}>
             Edit as YAML Instead
-          </mwc-button>
+          </ha-button>
         </div>
       `;
     }
@@ -814,13 +830,12 @@ class HaDashboardSidebarEditor extends LitElement {
               <h3 style="margin-bottom: 12px;">Choose Card Type:</h3>
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
                 ${["entities", "entity", "button", "picture", "conditional", "history-graph", "statistics-graph", "sensor", "gauge", "markdown", "glance", "thermostat"].map(cardType => html`
-                  <mwc-button
-                    raised
+                  <ha-button
                     @click=${() => this._selectQuickCardType(index, cardType)}
                     style="padding: 12px 8px; text-align: center;"
                   >
                     ${cardType}
-                  </mwc-button>
+                  </ha-button>
                 `)}
               </div>
             </div>
@@ -840,18 +855,18 @@ class HaDashboardSidebarEditor extends LitElement {
             <!-- YAML Editor Option -->
             <div style="margin-top: 20px;">
               <div style="display: flex; gap: 8px;flex-direction:row">
-                <mwc-button outlined @click=${() => this._showCardYaml(index)}>
+                <ha-button outlined @click=${() => this._showCardYaml(index)}>
                   Edit as YAML
-                </mwc-button>
-                <mwc-button outlined @click=${() => this._removeCard(index)} style="margin-left: 8px; color: var(--error-color);">
+                </ha-button>
+                <ha-button outlined @click=${() => this._removeCard(index)} style="margin-left: 8px; color: var(--error-color);">
                   Remove Card
-                </mwc-button>
-                <mwc-button outlined @click=${this._exitCardEditingMode}>
+                </ha-button>
+                <ha-button outlined @click=${this._exitCardEditingMode}>
                   Cancel
-                </mwc-button>
-                <mwc-button raised @click=${this._saveCardAndExit}>
+                </ha-button>
+                <ha-button @click=${this._saveCardAndExit}>
                   Save
-                </mwc-button>
+                </ha-button>
               </div>
             </div>
           `}
@@ -873,12 +888,12 @@ class HaDashboardSidebarEditor extends LitElement {
               dir="ltr"
             ></ha-code-editor>
             <div style="margin-top: 12px;">
-              <mwc-button raised @click=${() => this._applyYaml(index)}>
+              <ha-button @click=${() => this._applyYaml(index)}>
                 Apply YAML
-              </mwc-button>
-              <mwc-button outlined @click=${() => this._hideYamlEditor(index)} style="margin-left: 8px;">
+              </ha-button>
+              <ha-button outlined @click=${() => this._hideYamlEditor(index)} style="margin-left: 8px;">
                 Hide YAML Editor
-              </mwc-button>
+              </ha-button>
             </div>
           </div>
         ` : ''}
@@ -1107,20 +1122,20 @@ class HaDashboardSidebarEditor extends LitElement {
                       ${!ent.card ? html`
                         <div style="margin-top: 8px; padding: 12px; background: var(--secondary-background-color); border-radius: 6px; text-align: center;">
                           <div style="margin-bottom: 12px; color: var(--secondary-text-color);">No card configured</div>
-                          <mwc-button raised @click=${() => this._openCardPicker(i)}>
+                          <ha-button @click=${() => this._openCardPicker(i)}>
                             ➕ Add Card
-                          </mwc-button>
+                          </ha-button>
                         </div>
                       ` : html`
                         <div style="margin-top: 8px; padding: 12px; background: var(--card-background-color); border-radius: 6px;">
                           <div style="margin-bottom: 12px; font-weight: 500;font-size:15px">Configured Card: ${ent.card.type || 'Unknown'}</div>
                           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <mwc-button outlined dense @click=${() => this._editCard(i)}>
+                            <ha-button outlined @click=${() => this._editCard(i)}>
                               ✏️ Edit Card
-                            </mwc-button>
-                            <mwc-button outlined dense @click=${() => this._removeCard(i)}>
+                            </ha-button>
+                            <ha-button outlined @click=${() => this._removeCard(i)}>
                               🗑️ Remove
-                            </mwc-button>
+                            </ha-button>
                           </div>
                         </div>
                       `}
@@ -1181,7 +1196,7 @@ class HaDashboardSidebarEditor extends LitElement {
         <div class="big-divider"></div>
       `;
       })}
-      <mwc-button raised class="add" @click=${this._add}>Add entity</mwc-button>
+      <ha-button class="add" @click=${this._add}>Add entity</ha-button>
 
       ${this._renderCardDialog()}
     `;
