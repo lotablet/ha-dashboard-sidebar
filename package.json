@@ -19,7 +19,7 @@
     "@types/node": "^20.10.5",
     "typescript": "^5.3.3",
     "vite": "^6.3.5",
-    "vitest": "^1.1.0"
+    "vitest": "^3.1.4"
   },
   "author": "LoTableT",
   "license": "MIT"
